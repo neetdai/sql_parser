@@ -1,6 +1,6 @@
+use alloc::string::String;
 
-
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Error {
     Unexpected(String),
 }
