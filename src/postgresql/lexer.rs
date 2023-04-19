@@ -236,6 +236,45 @@ impl<'a> Lexer<'a> {
             }
         }
     }
+
+    // 扫描字符串
+    fn scan_string(&mut self) -> Option<Result<Token<'a>, ParserError>> {
+        let begin = self.next_if(|(_, c)| *c == '\'').map(|(index, _)| index)? + 1;
+
+        self.while_next_if(|(_, c)| *c != '\'');
+
+        if let Some((end, _)) = self.next_if(|(_, c)| *c == '\'') {
+            let s = self.src.get(begin..end)?;
+            Some(Ok(Token::String(s)))
+        } else {
+            Some(Err(ParserError::Unexpected(String::from("Unexpected String"))))
+        }
+    }
+
+    // 扫描utf16
+    // 在引号内，Unicode字符可以以转义的形式指定：反斜线接上4位16进制代码点号码或者反斜线和加号接上6位16进制代码点号码。
+    fn scan_unicode(&mut self) -> Option<Result<Token<'a>, ParserError>> {
+        self.next_if(|(_, c)| *c == 'U' || *c == 'u')?;
+        if self.next_if(|(_, c)| *c == '&').is_none() {
+            return Some(Err(ParserError::Unexpected(String::from("Unexpected Unicode"))));
+        }
+
+        let begin = match self.next_if(|(_, c)| *c == '\'') {
+            Some((index, _)) => index + 1,
+            None => return Some(Err(ParserError::Unexpected(String::from("Unexpected Unicode")))),
+        };
+
+        if self.while_next_if(|(_, c)| *c != '\'').is_none() {
+            return Some(Err(ParserError::Unexpected(String::from("Unexpected Unicode"))));
+        }
+
+        if let Some((end, _)) = self.next_if(|(_, c)| *c == '\'') {
+            let s = self.src.get(begin..end)?;
+            Some(Ok(Token::Unicode(s)))
+        } else {
+            Some(Err(ParserError::Unexpected(String::from("Unexpected Unicode"))))
+        }
+    }
 }
 
 impl<'a> Iterator for Lexer<'a> {
@@ -245,6 +284,8 @@ impl<'a> Iterator for Lexer<'a> {
         self.consume_whitespace();
 
         match self.scanner.peek() {
+            Some((_, c)) if *c == 'u' || *c == 'U' => self.scan_unicode(),
+            Some((_, '\'')) => self.scan_string(),
             Some((_, '.')) => self.scan_decimal_prefix().or(Some(Ok(Token::Period))),
             Some((_, c)) if c.is_ascii_digit() => self.scan_number(),
             Some((_, c)) if !c.is_ascii_alphabetic() && !c.is_ascii_digit() => self.scan_symbol(),
@@ -351,4 +392,28 @@ fn scan_symbol() {
             * with nesting: /* nested block comment */
             */="#, Token::Equal),
     ]);
+}
+
+#[test]
+fn scan_string() {
+    let mut lexer = Lexer::new("\'asdfa\'");
+    assert_eq!(lexer.next(), Some(Ok(Token::String("asdfa"))));
+
+    let mut lexer = Lexer::new("\'asd");
+    assert_eq!(lexer.next(), Some(Err(ParserError::Unexpected(String::from("Unexpected String")))));
+
+    let mut lexer = Lexer::new("\'\'");
+    assert_eq!(lexer.next(), Some(Ok(Token::String(""))));
+
+    let mut lexer = Lexer::new("\'");
+    assert_eq!(lexer.next(), Some(Err(ParserError::Unexpected(String::from("Unexpected String")))));
+}
+
+#[test]
+fn scan_unicode() {
+    let mut lexer = Lexer::new(r"U&'d\0061t\+000061'");
+    assert_eq!(lexer.next(), Some(Ok(Token::Unicode(r"d\0061t\+000061"))));
+
+    let mut lexer = Lexer::new(r"U&'d\0061t");
+    assert_eq!(lexer.next(), Some(Err(ParserError::Unexpected(String::from("Unexpected Unicode")))));
 }
