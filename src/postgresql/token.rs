@@ -1,9 +1,10 @@
 use super::keyword::Keyword;
+use alloc::string::String;
 
 #[derive(Debug, PartialEq)]
 pub(crate) enum Token<'a> {
-    String(&'a str),
-    Unicode(&'a str),
+    String(String),
+    Unicode(String),
     Number(&'a str),
     Ident(&'a str),
     Keyword(Keyword),
