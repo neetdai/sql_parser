@@ -1,9 +1,9 @@
-use crate::error::Error as ParserError;
+use crate::error::{Error as ParserError, ErrorType};
 use crate::postgresql::{Keyword, Token};
-use alloc::string::String;
 use core::iter::{Iterator, Peekable};
 use core::ops::FnOnce;
 use core::str::CharIndices;
+use alloc::string::String;
 
 pub(crate) struct Lexer<'a> {
     src: &'a str,
@@ -62,9 +62,7 @@ impl<'a> Lexer<'a> {
         let first = ident_chars.next()?;
 
         if !first.is_ascii_alphabetic() || first != '_' {
-            return Some(Err(ParserError::Unexpected(String::from(
-                "Unexpected ident",
-            ))));
+            return Some(Err(ParserError::Unexpected(ErrorType::Ident((begin, end)))));
         }
 
         let token = Keyword::compare_str(ident)
@@ -116,9 +114,7 @@ impl<'a> Lexer<'a> {
             let (_, tmp_end) = self.while_next_if(|(_, c)| c.is_ascii_digit())?;
             end = tmp_end;
         } else {
-            return Some(Err(ParserError::Unexpected(String::from(
-                "Unexpected number",
-            ))));
+            return Some(Err(ParserError::Unexpected(ErrorType::Number((begin, end)))));
         }
 
         Some(Ok((begin, end)))
@@ -126,13 +122,11 @@ impl<'a> Lexer<'a> {
 
     // 扫描负整数
     fn scan_negative_number(&mut self) -> Option<Result<(usize, usize), ParserError>> {
-        let (begin, _) = self.next_if(|(_, c)| *c == '-')?;
+        let (begin, end) = self.next_if(|(_, c)| *c == '-')?;
 
         Some(
             self.while_next_if(|(_, c)| c.is_ascii_digit())
-                .ok_or(ParserError::Unexpected(String::from(
-                    "Unexpected negative number",
-                )))
+                .ok_or(ParserError::Unexpected(ErrorType::Number((begin, self.scanner.peek().map(|(index, _)| *index).unwrap_or(self.src.len() - 1)))))
                 .map(|(_, end)| (begin, end)),
         )
     }
@@ -247,32 +241,32 @@ impl<'a> Lexer<'a> {
             let s = self.src.get(begin..end)?;
             Some(Ok(Token::String(s)))
         } else {
-            Some(Err(ParserError::Unexpected(String::from("Unexpected String"))))
+            Some(Err(ParserError::Unexpected(ErrorType::String((begin - 1, self.src.len() - 1)))))
         }
     }
 
     // 扫描utf16
     // 在引号内，Unicode字符可以以转义的形式指定：反斜线接上4位16进制代码点号码或者反斜线和加号接上6位16进制代码点号码。
     fn scan_unicode(&mut self) -> Option<Result<Token<'a>, ParserError>> {
-        self.next_if(|(_, c)| *c == 'U' || *c == 'u')?;
+        let begin = self.next_if(|(_, c)| *c == 'U' || *c == 'u').map(|(index, _)| index)?;
         if self.next_if(|(_, c)| *c == '&').is_none() {
-            return Some(Err(ParserError::Unexpected(String::from("Unexpected Unicode"))));
+            return Some(Err(ParserError::Unexpected(ErrorType::Unicode((begin, begin + 1)))));
         }
 
         let begin = match self.next_if(|(_, c)| *c == '\'') {
             Some((index, _)) => index + 1,
-            None => return Some(Err(ParserError::Unexpected(String::from("Unexpected Unicode")))),
+            None => return Some(Err(ParserError::Unexpected(ErrorType::Unicode((begin, begin + 2))))),
         };
 
         if self.while_next_if(|(_, c)| *c != '\'').is_none() {
-            return Some(Err(ParserError::Unexpected(String::from("Unexpected Unicode"))));
+            return Some(Err(ParserError::Unexpected(ErrorType::Unicode((begin, self.src.len() - 1)))));
         }
 
         if let Some((end, _)) = self.next_if(|(_, c)| *c == '\'') {
             let s = self.src.get(begin..end)?;
             Some(Ok(Token::Unicode(s)))
         } else {
-            Some(Err(ParserError::Unexpected(String::from("Unexpected Unicode"))))
+            Some(Err(ParserError::Unexpected(ErrorType::Unicode((begin, self.src.len() - 1)))))
         }
     }
 }
@@ -312,9 +306,7 @@ fn scan_number1() {
     let mut lexer = Lexer::new("123ea");
     assert_eq!(
         lexer.next(),
-        Some(Err(ParserError::Unexpected(String::from(
-            "Unexpected number"
-        ))))
+        Some(Err(ParserError::Unexpected(ErrorType::Number((3, 3)))))
     );
 
     let mut lexer = Lexer::new("123.456e12");
@@ -329,9 +321,7 @@ fn scan_number1() {
     let mut lexer = Lexer::new("123e-a");
     assert_eq!(
         lexer.next(),
-        Some(Err(ParserError::Unexpected(String::from(
-            "Unexpected negative number"
-        ))))
+        Some(Err(ParserError::Unexpected(ErrorType::Number((4, 5)))))
     );
 
     let mut lexer = Lexer::new(".123");
@@ -346,9 +336,7 @@ fn scan_number1() {
     let mut lexer = Lexer::new("123e-");
     assert_eq!(
         lexer.next(),
-        Some(Err(ParserError::Unexpected(String::from(
-            "Unexpected negative number"
-        ))))
+        Some(Err(ParserError::Unexpected(ErrorType::Number((4, 4)))))
     );
 }
 
@@ -400,13 +388,13 @@ fn scan_string() {
     assert_eq!(lexer.next(), Some(Ok(Token::String("asdfa"))));
 
     let mut lexer = Lexer::new("\'asd");
-    assert_eq!(lexer.next(), Some(Err(ParserError::Unexpected(String::from("Unexpected String")))));
+    assert_eq!(lexer.next(), Some(Err(ParserError::Unexpected(ErrorType::String((0, 3))))));
 
     let mut lexer = Lexer::new("\'\'");
     assert_eq!(lexer.next(), Some(Ok(Token::String(""))));
 
     let mut lexer = Lexer::new("\'");
-    assert_eq!(lexer.next(), Some(Err(ParserError::Unexpected(String::from("Unexpected String")))));
+    assert_eq!(lexer.next(), Some(Err(ParserError::Unexpected(ErrorType::String((0, 0))))));
 }
 
 #[test]
@@ -415,5 +403,5 @@ fn scan_unicode() {
     assert_eq!(lexer.next(), Some(Ok(Token::Unicode(r"d\0061t\+000061"))));
 
     let mut lexer = Lexer::new(r"U&'d\0061t");
-    assert_eq!(lexer.next(), Some(Err(ParserError::Unexpected(String::from("Unexpected Unicode")))));
+    assert_eq!(lexer.next(), Some(Err(ParserError::Unexpected(ErrorType::Unicode((3, 9))))));
 }
