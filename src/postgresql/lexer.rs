@@ -57,13 +57,14 @@ impl<'a> Lexer<'a> {
     // SQL标识符和关键词必须以一个字母（a-z，也可以是带变音符的字母和非拉丁字母）或一个下划线（_）开始。后续字符可以是字母、下划线（_）、数字（0-9）或美元符号（$）
     // http://www.postgres.cn/docs/12/sql-syntax-lexical.html#SQL-SYNTAX-IDENTIFIERS
     fn scan_ident_quato(&mut self) -> Option<Result<Token<'a>, ParserError>> {
-        let (begin, end) = self.while_next_if(|(_, c)| c.is_ascii_alphanumeric() || *c == '_')?;
+        let (begin, end) =
+            self.while_next_if(|(_, c)| c.is_ascii_alphanumeric() || *c == '_' || *c == '$')?;
 
         let ident = self.src.get(begin..=end)?;
         let mut ident_chars = ident.chars();
         let first = ident_chars.next()?;
 
-        if !first.is_ascii_alphabetic() || first != '_' {
+        if first.is_ascii_digit() || first == '$' {
             return Some(Err(ParserError::Unexpected(ErrorType::Ident((begin, end)))));
         }
 
@@ -164,19 +165,33 @@ impl<'a> Lexer<'a> {
 
     // 扫描符号
     fn scan_symbol(&mut self) -> Option<Result<Token<'a>, ParserError>> {
-        match self.scanner.next() {
-            Some((_, ',')) => Some(Ok(Token::Comma)),
-            Some((_, '=')) => Some(Ok(Token::Equal)),
-            Some((_, '>')) => self
-                .next_if(|(_, c)| *c == '=')
-                .map(|_| Ok(Token::GreaterOrEqual))
-                .or(Some(Ok(Token::Greater))),
-            Some((_, '<')) => self
-                .next_if(|(_, c)| *c == '=')
-                .map(|_| Ok(Token::LessOrEqual))
-                .or(Some(Ok(Token::Less))),
-            Some((_, '+')) => Some(Ok(Token::Plus)),
+        match self.scanner.peek() {
+            Some((_, ',')) => {
+                self.scanner.next();
+                Some(Ok(Token::Comma))
+            }
+            Some((_, '=')) => {
+                self.scanner.next();
+                Some(Ok(Token::Equal))
+            }
+            Some((_, '>')) => {
+                self.scanner.next();
+                self.next_if(|(_, c)| *c == '=')
+                    .map(|_| Ok(Token::GreaterOrEqual))
+                    .or(Some(Ok(Token::Greater)))
+            }
+            Some((_, '<')) => {
+                self.scanner.next();
+                self.next_if(|(_, c)| *c == '=')
+                    .map(|_| Ok(Token::LessOrEqual))
+                    .or(Some(Ok(Token::Less)))
+            }
+            Some((_, '+')) => {
+                self.scanner.next();
+                Some(Ok(Token::Plus))
+            }
             Some((_, '-')) => {
+                self.scanner.next();
                 // 一段注释是以双横杠开始并且延伸到行结尾的一个字符序列
                 match self.next_if(|(_, c)| *c == '-') {
                     None => Some(Ok(Token::Sub)),
@@ -186,29 +201,77 @@ impl<'a> Lexer<'a> {
                     }
                 }
             }
-            Some((_, '/')) => match self.next_if(|(_, c)| *c == '*') {
-                None => Some(Ok(Token::Div)),
-                Some(_) => {
-                    self.scan_c_like_annotation();
-                    self.next()
+            Some((_, '/')) => {
+                self.scanner.next();
+                match self.next_if(|(_, c)| *c == '*') {
+                    None => Some(Ok(Token::Div)),
+                    Some(_) => {
+                        self.scan_c_like_annotation();
+                        self.next()
+                    }
                 }
-            },
-            Some((_, '*')) => Some(Ok(Token::Mul)),
-            Some((_, '~')) => Some(Ok(Token::Tilde)),
-            Some((_, '@')) => Some(Ok(Token::At)),
-            Some((_, '#')) => Some(Ok(Token::Sharp)),
-            Some((_, '%')) => Some(Ok(Token::Mod)),
-            Some((_, '^')) => Some(Ok(Token::Caret)),
-            Some((_, '&')) => Some(Ok(Token::Ampersand)),
-            Some((_, '|')) => Some(Ok(Token::Pipe)),
-            Some((_, '?')) => Some(Ok(Token::QuestionMark)),
-            Some((_, '(')) => Some(Ok(Token::LParen)),
-            Some((_, ')')) => Some(Ok(Token::RParen)),
-            Some((_, '[')) => Some(Ok(Token::LBracket)),
-            Some((_, ']')) => Some(Ok(Token::RBracket)),
-            Some((_, ';')) => Some(Ok(Token::Eof)),
-            Some((_, ':')) => Some(Ok(Token::Colon)),
-            Some(_) => Some(Err(ParserError::Invalid)),
+            }
+            Some((_, '*')) => {
+                self.scanner.next();
+                Some(Ok(Token::Mul))
+            }
+            Some((_, '~')) => {
+                self.scanner.next();
+                Some(Ok(Token::Tilde))
+            }
+            Some((_, '@')) => {
+                self.scanner.next();
+                Some(Ok(Token::At))
+            }
+            Some((_, '#')) => {
+                self.scanner.next();
+                Some(Ok(Token::Sharp))
+            }
+            Some((_, '%')) => {
+                self.scanner.next();
+                Some(Ok(Token::Mod))
+            }
+            Some((_, '^')) => {
+                self.scanner.next();
+                Some(Ok(Token::Caret))
+            }
+            Some((_, '&')) => {
+                self.scanner.next();
+                Some(Ok(Token::Ampersand))
+            }
+            Some((_, '|')) => {
+                self.scanner.next();
+                Some(Ok(Token::Pipe))
+            }
+            Some((_, '?')) => {
+                self.scanner.next();
+                Some(Ok(Token::QuestionMark))
+            }
+            Some((_, '(')) => {
+                self.scanner.next();
+                Some(Ok(Token::LParen))
+            }
+            Some((_, ')')) => {
+                self.scanner.next();
+                Some(Ok(Token::RParen))
+            }
+            Some((_, '[')) => {
+                self.scanner.next();
+                Some(Ok(Token::LBracket))
+            }
+            Some((_, ']')) => {
+                self.scanner.next();
+                Some(Ok(Token::RBracket))
+            }
+            Some((_, ';')) => {
+                self.scanner.next();
+                Some(Ok(Token::Eof))
+            }
+            Some((_, ':')) => {
+                self.scanner.next();
+                Some(Ok(Token::Colon))
+            }
+            Some(_) => self.scan_ident_quato(),
             None => None,
         }
     }
@@ -392,7 +455,18 @@ impl<'a> Iterator for Lexer<'a> {
         self.consume_whitespace();
 
         match self.scanner.peek() {
-            Some((_, c)) if *c == 'u' || *c == 'U' => self.scan_unicode(),
+            Some((index, c)) if *c == 'u' || *c == 'U' => {
+                if let Some(prefix) = self.src.get(*index..=*index + 1) {
+                    let prefix_upper = prefix.to_uppercase();
+                    if prefix_upper.as_str() == "U&" {
+                        self.scan_unicode()
+                    } else {
+                        self.scan_ident_quato()
+                    }
+                } else {
+                    self.scan_ident_quato()
+                }
+            }
             Some((_, '\'')) => self.scan_string(),
             Some((_, '.')) => self.scan_decimal_prefix().or(Some(Ok(Token::Period))),
             Some((_, c)) if c.is_ascii_digit() => self.scan_number(),
@@ -571,16 +645,135 @@ fn scan_unicode() {
     assert_eq!(lexer.next(), None);
 
     let mut lexer = Lexer::new(r"U");
-    assert_eq!(
-        lexer.next(),
-        Some(Err(ParserError::Unexpected(ErrorType::Unicode((0, 0)))))
-    );
+    assert_eq!(lexer.next(), Some(Ok(Token::Ident("U"))));
 
     let mut lexer = Lexer::new(r"U&");
     assert_eq!(
         lexer.next(),
         Some(Err(ParserError::Unexpected(ErrorType::Unicode((0, 1)))))
     );
+}
 
-    
+#[test]
+fn scan_keyword() {
+    use alloc::vec;
+    let func = |list: Vec<(&str, Keyword)>| {
+        for (text, keyword) in list.into_iter() {
+            let mut lexer = Lexer::new(text);
+            assert_eq!(lexer.next(), Some(Ok(Token::Keyword(keyword))));
+        }
+    };
+
+    func(vec![
+        ("Abs", Keyword::Abs),
+        ("All", Keyword::All),
+        ("Analyse", Keyword::Analyse),
+        ("Analyze", Keyword::Analyze),
+        ("And", Keyword::And),
+        ("Any", Keyword::Any),
+        ("Array", Keyword::Array),
+        ("As),", Keyword::As),
+        ("Asc", Keyword::Asc),
+        ("Asymmetric", Keyword::Asymmetric),
+        ("Authorization", Keyword::Authorization),
+        ("Binary", Keyword::Binary),
+        ("Both", Keyword::Both),
+        ("Case", Keyword::Case),
+        ("Cast", Keyword::Cast),
+        ("Check", Keyword::Check),
+        ("Collate", Keyword::Collate),
+        ("Collation", Keyword::Collation),
+        ("Column", Keyword::Column),
+        ("Concurrently", Keyword::Concurrently),
+        ("Constraint", Keyword::Constraint),
+        ("Create", Keyword::Create),
+        ("Cross", Keyword::Cross),
+        ("Current_Catalog", Keyword::Current_Catalog),
+        ("Current_Date", Keyword::Current_Date),
+        ("Current_Role", Keyword::Current_Role),
+        ("Current_Schema", Keyword::Current_Schema),
+        ("Current_Time", Keyword::Current_Time),
+        ("Current_Timestamp", Keyword::Current_Timestamp),
+        ("Current_User", Keyword::Current_User),
+        ("Default", Keyword::Default),
+        ("Deferrable", Keyword::Deferrable),
+        ("Desc", Keyword::Desc),
+        ("Distinct", Keyword::Distinct),
+        ("Do),", Keyword::Do),
+        ("Else", Keyword::Else),
+        ("Except", Keyword::Except),
+        ("False", Keyword::False),
+        ("Fetch", Keyword::Fetch),
+        ("For", Keyword::For),
+        ("Foreign", Keyword::Foreign),
+        ("Freeze", Keyword::Freeze),
+        ("From", Keyword::From),
+        ("Full", Keyword::Full),
+        ("Grant", Keyword::Grant),
+        ("Group", Keyword::Group),
+        ("Having", Keyword::Having),
+        ("Ilike", Keyword::Ilike),
+        ("In),", Keyword::In),
+        ("Initially", Keyword::Initially),
+        ("Inner", Keyword::Inner),
+        ("Intersect", Keyword::Intersect),
+        ("Into", Keyword::Into),
+        ("Is),", Keyword::Is),
+        ("Isnull", Keyword::Isnull),
+        ("Join", Keyword::Join),
+        ("Lateral", Keyword::Lateral),
+        ("Leading", Keyword::Leading),
+        ("Left", Keyword::Left),
+        ("Like", Keyword::Like),
+        ("Limit", Keyword::Limit),
+        ("Localtime", Keyword::Localtime),
+        ("Localtimestamp", Keyword::Localtimestamp),
+        ("Natural", Keyword::Natural),
+        ("Not", Keyword::Not),
+        ("Notnull", Keyword::Notnull),
+        ("Null", Keyword::Null),
+        ("On),", Keyword::On),
+        ("Only", Keyword::Only),
+        ("Or),", Keyword::Or),
+        ("Order", Keyword::Order),
+        ("Overlaps", Keyword::Overlaps),
+        ("Placing", Keyword::Placing),
+        ("Primary", Keyword::Primary),
+        ("References", Keyword::References),
+        ("Returning", Keyword::Returning),
+        ("Right", Keyword::Right),
+        ("Select", Keyword::Select),
+        ("Session_User", Keyword::Session_User),
+        ("Similar", Keyword::Similar),
+        ("Some", Keyword::Some),
+        ("Symmetric", Keyword::Symmetric),
+        ("Table", Keyword::Table),
+        ("Tablesample", Keyword::Tablesample),
+        ("Then", Keyword::Then),
+        ("To),", Keyword::To),
+        ("Trailing", Keyword::Trailing),
+        ("True", Keyword::True),
+        ("Union", Keyword::Union),
+        ("Unique", Keyword::Unique),
+        ("User", Keyword::User),
+        ("Using", Keyword::Using),
+        ("Variadic", Keyword::Variadic),
+        ("Verbose", Keyword::Verbose),
+        ("When", Keyword::When),
+        ("Where", Keyword::Where),
+        ("Window", Keyword::Window),
+        ("With", Keyword::With),
+    ]);
+}
+
+#[test]
+fn scan_ident() {
+    let mut lexer = Lexer::new("_qwe");
+    assert_eq!(lexer.next(), Some(Ok(Token::Ident("_qwe"))));
+
+    let mut lexer = Lexer::new("$qwe");
+    assert_eq!(
+        lexer.next(),
+        Some(Err(ParserError::Unexpected(ErrorType::Ident((0, 3)))))
+    );
 }
