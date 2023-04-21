@@ -418,7 +418,7 @@ impl<'a> Lexer<'a> {
                             None => {
                                 return Some(Err(ParserError::Unexpected(ErrorType::Unicode((
                                     begin,
-                                    end + 1,
+                                    end,
                                 )))))
                             }
                         }
@@ -540,6 +540,7 @@ fn scan_symbol() {
     };
 
     compare(vec![
+        (",", Token::Comma),
         ("=", Token::Equal),
         (">", Token::Greater),
         (">=", Token::GreaterOrEqual),
@@ -652,6 +653,15 @@ fn scan_unicode() {
         lexer.next(),
         Some(Err(ParserError::Unexpected(ErrorType::Unicode((0, 1)))))
     );
+
+    let mut lexer = Lexer::new(r"U&'\006");
+    assert_eq!(
+        lexer.next(),
+        Some(Err(ParserError::Unexpected(ErrorType::Unicode((
+            3,
+            6,
+        )))))
+    )
 }
 
 #[test]
@@ -775,5 +785,20 @@ fn scan_ident() {
     assert_eq!(
         lexer.next(),
         Some(Err(ParserError::Unexpected(ErrorType::Ident((0, 3)))))
+    );
+}
+
+#[test]
+fn scan_sql_text() {
+    use alloc::vec;
+    let mut lexer = Lexer::new("select * from a");
+    assert_eq!(
+        lexer.collect::<Vec<Result<Token<'_>, ParserError>>>(),
+        vec![
+            Ok(Token::Keyword(Keyword::Select)),
+            Ok(Token::Mul),
+            Ok(Token::Keyword(Keyword::From)),
+            Ok(Token::Ident("a")),
+        ]
     );
 }
