@@ -7,6 +7,11 @@ use core::iter::{Extend, Iterator, Peekable};
 use core::ops::FnOnce;
 use core::str::CharIndices;
 
+enum NumberType {
+    Integer,
+    Float,
+}
+
 pub(crate) struct Lexer<'a> {
     src: &'a str,
     scanner: Peekable<CharIndices<'a>>,
@@ -79,8 +84,14 @@ impl<'a> Lexer<'a> {
     fn scan_number(&mut self) -> Option<Result<Token<'a>, ParserError>> {
         let (begin, mut end) = self.while_next_if(|(_, c)| c.is_ascii_digit())?;
 
+        // 如果一个不包含小数点和指数的数字常量的值适合类型integer（32 位），它首先被假定为类型integer。
+        // 否则如果它的值适合类型bigint（64 位），它被假定为类型bigint。
+        // 再否则它会被取做类型numeric。包含小数点和/或指数的常量总是首先被假定为类型numeric。
+        let mut number_type = NumberType::Integer;
+
         if let Some((tmp_end, _)) = self.next_if(|(_, c)| *c == '.') {
             end = tmp_end;
+            number_type = NumberType::Float;
             if self.peek_if(|(_, c)| c.is_ascii_digit()).is_some() {
                 let (_, tmp_end) = self.while_next_if(|(_, c)| c.is_ascii_digit())?;
                 end = tmp_end;
@@ -88,14 +99,33 @@ impl<'a> Lexer<'a> {
         }
 
         match self.scan_scientific_notation() {
-            Some(Ok((_, tmp_end))) => end = tmp_end,
+            Some(Ok((_, tmp_end))) => {
+                end = tmp_end;
+                number_type = NumberType::Float;
+            },
             Some(Err(e)) => return Some(Err(e)),
             None => {}
         }
 
         let number = self.src.get(begin..=end)?;
 
-        Some(Ok(Token::Number(number)))
+        match number_type {
+            NumberType::Integer => {
+                match i64::from_str_radix(number, 10) {
+                    Ok(big_number) => {
+                        if big_number < (i32::MAX as i64) {
+                            Some(Ok(Token::Integer(number)))
+                        } else {
+                            Some(Ok(Token::BigInteger(number)))
+                        }
+                    }
+                    Err(_) => Some(Ok(Token::Number(number)))
+                }
+            }
+            NumberType::Float => {
+                Some(Ok(Token::Float(number)))
+            }
+        }
     }
 
     // 扫描科学计数法
@@ -160,7 +190,7 @@ impl<'a> Lexer<'a> {
 
         let number = self.src.get(begin..=end)?;
 
-        Some(Ok(Token::Number(number)))
+        Some(Ok(Token::Float(number)))
     }
 
     // 扫描符号
@@ -403,9 +433,9 @@ impl<'a> Lexer<'a> {
                     let mut n = 0;
                     for _ in range {
                         match self.scanner.next() {
-                            Some((index, c)) if c.is_ascii_digit() => {
+                            Some((index, c)) if c.is_ascii_hexdigit() => {
                                 end = index;
-                                let tmp = u32::from(c) - 48;
+                                let tmp = c.to_digit(16).expect("unexpect hex digit");
                                 n <<= 4;
                                 n += tmp;
                             }
@@ -478,18 +508,18 @@ impl<'a> Iterator for Lexer<'a> {
 }
 
 #[test]
-fn scan_number1() {
+fn scan_number() {
     let mut lexer = Lexer::new("123");
-    assert_eq!(lexer.next(), Some(Ok(Token::Number("123"))));
+    assert_eq!(lexer.next(), Some(Ok(Token::Integer("123"))));
 
     let mut lexer = Lexer::new("123.456");
-    assert_eq!(lexer.next(), Some(Ok(Token::Number("123.456"))));
+    assert_eq!(lexer.next(), Some(Ok(Token::Float("123.456"))));
 
     let mut lexer = Lexer::new("123.asdf");
-    assert_eq!(lexer.next(), Some(Ok(Token::Number("123."))));
+    assert_eq!(lexer.next(), Some(Ok(Token::Float("123."))));
 
     let mut lexer = Lexer::new("123e3");
-    assert_eq!(lexer.next(), Some(Ok(Token::Number("123e3"))));
+    assert_eq!(lexer.next(), Some(Ok(Token::Float("123e3"))));
 
     let mut lexer = Lexer::new("123ea");
     assert_eq!(
@@ -498,13 +528,13 @@ fn scan_number1() {
     );
 
     let mut lexer = Lexer::new("123.456e12");
-    assert_eq!(lexer.next(), Some(Ok(Token::Number("123.456e12"))));
+    assert_eq!(lexer.next(), Some(Ok(Token::Float("123.456e12"))));
 
     let mut lexer = Lexer::new("123e-3");
-    assert_eq!(lexer.next(), Some(Ok(Token::Number("123e-3"))));
+    assert_eq!(lexer.next(), Some(Ok(Token::Float("123e-3"))));
 
     let mut lexer = Lexer::new("123.e3");
-    assert_eq!(lexer.next(), Some(Ok(Token::Number("123.e3"))));
+    assert_eq!(lexer.next(), Some(Ok(Token::Float("123.e3"))));
 
     let mut lexer = Lexer::new("123e-a");
     assert_eq!(
@@ -513,10 +543,10 @@ fn scan_number1() {
     );
 
     let mut lexer = Lexer::new(".123");
-    assert_eq!(lexer.next(), Some(Ok(Token::Number(".123"))));
+    assert_eq!(lexer.next(), Some(Ok(Token::Float(".123"))));
 
     let mut lexer = Lexer::new(".123e3");
-    assert_eq!(lexer.next(), Some(Ok(Token::Number(".123e3"))));
+    assert_eq!(lexer.next(), Some(Ok(Token::Float(".123e3"))));
 
     let mut lexer = Lexer::new(".asd");
     assert_eq!(lexer.next(), Some(Ok(Token::Period)));
@@ -525,6 +555,12 @@ fn scan_number1() {
     assert_eq!(
         lexer.next(),
         Some(Err(ParserError::Unexpected(ErrorType::Number((4, 4)))))
+    );
+
+    let mut lexer = Lexer::new("2147483648");
+    assert_eq!(
+        lexer.next(),
+        Some(Ok(Token::BigInteger("2147483648")))
     );
 }
 
@@ -661,7 +697,13 @@ fn scan_unicode() {
             3,
             6,
         )))))
-    )
+    );
+
+    let mut lexer = Lexer::new(r"U&'\8001\864e'");
+    assert_eq!(
+        lexer.next(),
+        Some(Ok(Token::Unicode(String::from("老虎"))))
+    );
 }
 
 #[test]
