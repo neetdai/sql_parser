@@ -102,7 +102,7 @@ impl<'a> Lexer<'a> {
             Some(Ok((_, tmp_end))) => {
                 end = tmp_end;
                 number_type = NumberType::Float;
-            },
+            }
             Some(Err(e)) => return Some(Err(e)),
             None => {}
         }
@@ -110,21 +110,17 @@ impl<'a> Lexer<'a> {
         let number = self.src.get(begin..=end)?;
 
         match number_type {
-            NumberType::Integer => {
-                match i64::from_str_radix(number, 10) {
-                    Ok(big_number) => {
-                        if big_number < (i32::MAX as i64) {
-                            Some(Ok(Token::Integer(number)))
-                        } else {
-                            Some(Ok(Token::BigInteger(number)))
-                        }
+            NumberType::Integer => match number.parse::<i64>() {
+                Ok(big_number) => {
+                    if big_number < (i32::MAX as i64) {
+                        Some(Ok(Token::Integer(number)))
+                    } else {
+                        Some(Ok(Token::BigInteger(number)))
                     }
-                    Err(_) => Some(Ok(Token::Number(number)))
                 }
-            }
-            NumberType::Float => {
-                Some(Ok(Token::Float(number)))
-            }
+                Err(_) => Some(Ok(Token::Number(number))),
+            },
+            NumberType::Float => Some(Ok(Token::Float(number))),
         }
     }
 
@@ -447,8 +443,7 @@ impl<'a> Lexer<'a> {
                             }
                             None => {
                                 return Some(Err(ParserError::Unexpected(ErrorType::Unicode((
-                                    begin,
-                                    end,
+                                    begin, end,
                                 )))))
                             }
                         }
@@ -558,10 +553,7 @@ fn scan_number() {
     );
 
     let mut lexer = Lexer::new("2147483648");
-    assert_eq!(
-        lexer.next(),
-        Some(Ok(Token::BigInteger("2147483648")))
-    );
+    assert_eq!(lexer.next(), Some(Ok(Token::BigInteger("2147483648"))));
 }
 
 #[test]
@@ -693,17 +685,11 @@ fn scan_unicode() {
     let mut lexer = Lexer::new(r"U&'\006");
     assert_eq!(
         lexer.next(),
-        Some(Err(ParserError::Unexpected(ErrorType::Unicode((
-            3,
-            6,
-        )))))
+        Some(Err(ParserError::Unexpected(ErrorType::Unicode((3, 6,)))))
     );
 
     let mut lexer = Lexer::new(r"U&'\8001\864e'");
-    assert_eq!(
-        lexer.next(),
-        Some(Ok(Token::Unicode(String::from("老虎"))))
-    );
+    assert_eq!(lexer.next(), Some(Ok(Token::Unicode(String::from("老虎")))));
 }
 
 #[test]
@@ -841,6 +827,32 @@ fn scan_sql_text() {
             Ok(Token::Mul),
             Ok(Token::Keyword(Keyword::From)),
             Ok(Token::Ident("a")),
+        ]
+    );
+
+    let mut lexer = Lexer::new("select * from a.b");
+    assert_eq!(
+        lexer.collect::<Vec<Result<Token<'_>, ParserError>>>(),
+        vec![
+            Ok(Token::Keyword(Keyword::Select)),
+            Ok(Token::Mul),
+            Ok(Token::Keyword(Keyword::From)),
+            Ok(Token::Ident("a")),
+            Ok(Token::Period),
+            Ok(Token::Ident("b")),
+        ]
+    );
+
+    let mut lexer = Lexer::new("select * from a limit 10");
+    assert_eq!(
+        lexer.collect::<Vec<Result<Token<'_>, ParserError>>>(),
+        vec![
+            Ok(Token::Keyword(Keyword::Select)),
+            Ok(Token::Mul),
+            Ok(Token::Keyword(Keyword::From)),
+            Ok(Token::Ident("a")),
+            Ok(Token::Keyword(Keyword::Limit)),
+            Ok(Token::Integer("10"))
         ]
     );
 }
