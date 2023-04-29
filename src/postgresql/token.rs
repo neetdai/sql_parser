@@ -2,7 +2,7 @@ use super::keyword::Keyword;
 use alloc::string::String;
 
 #[derive(Debug, PartialEq)]
-pub(crate) enum Token<'a> {
+pub enum Token<'a> {
     String(String),
     Unicode(String),
     Number(&'a str),

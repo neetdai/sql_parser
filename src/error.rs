@@ -1,12 +1,13 @@
 use core::ops::RangeInclusive;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub enum Error {
     Unexpected(ErrorType),
     Invalid,
+    Syntax,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub enum ErrorType {
     String((usize, usize)),
     Integer((usize, usize)),

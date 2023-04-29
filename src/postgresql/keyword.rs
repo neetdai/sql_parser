@@ -1,7 +1,7 @@
 // http://www.postgres.cn/docs/12/sql-keywords-appendix.html
 // postgresql SQL关键词
 #[derive(Debug, PartialEq)]
-pub(crate) enum Keyword {
+pub enum Keyword {
     Abs,
     All,
     Analyse,
@@ -103,7 +103,7 @@ pub(crate) enum Keyword {
 }
 
 impl Keyword {
-    pub(crate) fn compare_str(input: &str) -> Option<Self> {
+    pub fn compare_str(input: &str) -> Option<Self> {
         let input_uppercase = input.to_uppercase();
         match input_uppercase.as_str() {
             "ABS" => Some(Keyword::Abs),
