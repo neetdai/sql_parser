@@ -11,6 +11,7 @@ pub enum Token<'a> {
     Float(&'a str),
     Ident(&'a str),
     Keyword(Keyword),
+    Params(&'a str),
     Period,
     Comma,
     Div,

@@ -79,7 +79,13 @@ fn select_statement() {
             limit: None,
         })))
     );
+}
 
+#[test]
+fn test_select_limit() {
+    use crate::postgresql::common::*;
+    use alloc::vec;
+    
     let mut lexer = Lexer::new("select * from a limit 10");
     let statement = Statement::new(lexer);
     assert_eq!(
