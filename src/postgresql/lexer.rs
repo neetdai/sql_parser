@@ -471,6 +471,14 @@ impl<'a> Lexer<'a> {
             }
         }
     }
+
+    // 扫描参数占位符
+    fn scan_params_position(&mut self) -> Option<Result<Token<'a>, ParserError>> {
+        self.next_if(|(_, c)| *c == '$')?;
+        let (begin, end) = self.while_next_if(|(_, c)| c.is_ascii_digit())?;
+
+        Some(Ok(Token::Params(self.src.get(begin..=end)?)))
+    }
 }
 
 impl<'a> Iterator for Lexer<'a> {
@@ -490,6 +498,18 @@ impl<'a> Iterator for Lexer<'a> {
                     }
                 } else {
                     self.scan_ident_quato()
+                }
+            }
+            Some((index, '$')) => {
+                if let Some(tmp) = self.src.get(*index..=*index + 1) {
+                    let mut tmp_char = tmp.chars();
+                    match tmp_char.nth(1) {
+                        Some(c) if c.is_ascii_digit() => self.scan_params_position(),
+                        Some(c) if c.is_ascii_alphabetic() => self.scan_ident_quato(),
+                        Some(_) | None => Some(Err(ParserError::Invalid)),
+                    }
+                } else {
+                    Some(Err(ParserError::Invalid))
                 }
             }
             Some((_, '\'')) => self.scan_string(),
@@ -817,6 +837,12 @@ fn scan_ident() {
 }
 
 #[test]
+fn scan_params() {
+    let mut lexer = Lexer::new("$");
+    assert_eq!(lexer.next(), Some(Err(ParserError::Invalid)));
+}
+
+#[test]
 fn scan_sql_text() {
     use alloc::vec;
     let mut lexer = Lexer::new("select * from a");
@@ -853,6 +879,21 @@ fn scan_sql_text() {
             Ok(Token::Ident("a")),
             Ok(Token::Keyword(Keyword::Limit)),
             Ok(Token::Integer("10"))
+        ]
+    );
+
+    let mut lexer = Lexer::new("select * from a where b = $1");
+    assert_eq!(
+        lexer.collect::<Vec<Result<Token<'_>, ParserError>>>(),
+        vec![
+            Ok(Token::Keyword(Keyword::Select)),
+            Ok(Token::Mul),
+            Ok(Token::Keyword(Keyword::From)),
+            Ok(Token::Ident("a")),
+            Ok(Token::Keyword(Keyword::Where)),
+            Ok(Token::Ident("b")),
+            Ok(Token::Equal),
+            Ok(Token::Params("1")),
         ]
     );
 }
