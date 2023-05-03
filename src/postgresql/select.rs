@@ -60,20 +60,51 @@ impl<'a> Select<'a> {
 
     fn consume_columns(lexer: &mut Peekable<Lexer<'a>>) -> Result<Vec<Column<'a>>, ParserError> {
         let mut columns = Vec::<Column<'a>>::new();
+        loop {
+            match lexer.peek() {
+                Some(Ok(Token::Ident(_))) | Some(Ok(Token::Mul)) => {
+                    match Self::consume_single_column(lexer) {
+                        Some(Ok(column)) => columns.push(column),
+                        Some(Err(e)) => return Err(e),
+                        None => {},
+                    }
+                }
+                Some(Ok(Token::Keyword(Keyword::From))) | None => {
+                    break;
+                }
+                Some(Ok(Token::Comma)) => {
+                    lexer.next();
+                }
+                Some(Err(_)) => {
+                    let err = lexer.next().expect("expect consume columns error");
+                    err?;
+                }
+                Some(_) => {
+                    return Err(ParserError::Syntax);
+                }
+            }
+        }
+
+        Ok(columns)
+    }
+
+    fn consume_single_column(lexer: &mut Peekable<Lexer<'a>>) -> Option<Result<Column<'a>, ParserError>> {
         let mut column_status = PrefixAliasStatus::None;
+        let mut column_result = Option::<Column<'_>>::None;
+
         loop {
             match lexer.peek() {
                 Some(Ok(Token::Ident(name))) if matches!(column_status, PrefixAliasStatus::Prefix) => {
                     column_status = PrefixAliasStatus::None;
 
-                    if let Some(column) = columns.last_mut() {
+                    if let Some(column) = column_result.as_mut() {
                         let prefix = replace(&mut column.name, Token::Ident(name));
                         column.prefix = Some(prefix);
                     }
                     lexer.next();
                 }
                 Some(Ok(Token::Ident(name))) if matches!(column_status, PrefixAliasStatus::None) => {
-                    columns.push(Column {
+                    column_result = Some(Column {
                         prefix: None,
                         name: Token::Ident(name),
                         alias: None,
@@ -90,11 +121,11 @@ impl<'a> Select<'a> {
                 Some(Ok(Token::Mul)) => {
                     column_status = PrefixAliasStatus::None;
 
-                    if let Some(column) = columns.last_mut() {
+                    if let Some(column) = column_result.as_mut() {
                         let prefix = replace(&mut column.name, Token::Mul);
                         column.prefix = Some(prefix);
                     } else {
-                        columns.push(Column {
+                        column_result = Some(Column {
                             prefix: None,
                             name: Token::Mul,
                             alias: None,
@@ -105,7 +136,7 @@ impl<'a> Select<'a> {
                 }
                 Some(Ok(Token::Ident(alias))) if matches!(column_status, PrefixAliasStatus::Alias) => {
                     column_status = PrefixAliasStatus::None;
-                    if let Some(column) = columns.last_mut() {
+                    if let Some(column) = column_result.as_mut() {
                         column.alias = Some(Token::Ident(alias));
                     }
                     column_status = PrefixAliasStatus::None;
@@ -115,23 +146,11 @@ impl<'a> Select<'a> {
                     column_status = PrefixAliasStatus::Alias;
                     lexer.next();
                 }
-                Some(Ok(Token::Keyword(Keyword::From))) | None => {
-                    break;
-                }
-                Some(Ok(Token::Comma)) => {
-                    lexer.next();
-                }
-                Some(_) => {
-                    return Err(ParserError::Syntax);
-                }
-                Some(Err(_)) => {
-                    let err = lexer.next().expect("expect consume columns error");
-                    err?;
-                }
+                Some(_) | None => break,
             }
         }
 
-        Ok(columns)
+        column_result.map(|column| Ok(column))
     }
 
     fn consume_tables(lexer: &mut Peekable<Lexer<'a>>) -> Result<Vec<TableType<'a>>, ParserError> {
