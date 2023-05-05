@@ -85,19 +85,17 @@ fn select_statement() {
 fn test_select_limit() {
     use crate::postgresql::common::*;
     use alloc::vec;
-    
+
     let mut lexer = Lexer::new("select * from a limit 10");
     let statement = Statement::new(lexer);
     assert_eq!(
         statement,
         Some(Ok(Statement::Select(Select {
-            columns: vec![
-                Column {
-                    prefix: None,
-                    name: Token::Mul,
-                    alias: None,
-                }
-            ],
+            columns: vec![Column {
+                prefix: None,
+                name: Token::Mul,
+                alias: None,
+            }],
             tables: vec![TableType::Table(Table {
                 prefix: None,
                 name: Token::Ident("a"),
@@ -115,13 +113,11 @@ fn test_select_limit() {
     assert_eq!(
         statement,
         Some(Ok(Statement::Select(Select {
-            columns: vec![
-                Column {
-                    prefix: None,
-                    name: Token::Mul,
-                    alias: None,
-                }
-            ],
+            columns: vec![Column {
+                prefix: None,
+                name: Token::Mul,
+                alias: None,
+            }],
             tables: vec![TableType::Table(Table {
                 prefix: None,
                 name: Token::Ident("a"),
@@ -131,6 +127,53 @@ fn test_select_limit() {
                 from: Some(Token::Integer("10")),
                 limit: Token::Integer("50"),
             }),
+        })))
+    );
+}
+
+#[test]
+fn test_select_inner_join() {
+    use crate::postgresql::common::*;
+    use alloc::boxed::Box;
+    use alloc::vec;
+
+    let mut lexer = Lexer::new("select * from a inner join b using (q, w, e)");
+    let statement = Statement::new(lexer);
+    assert_eq!(
+        statement,
+        Some(Ok(Statement::Select(Select {
+            columns: vec![Column {
+                prefix: None,
+                name: Token::Mul,
+                alias: None,
+            }],
+            tables: vec![TableType::InnerJoin(Box::new(InnerJoin::Using {
+                left: Table {
+                    prefix: None,
+                    name: Token::Ident("a"),
+                    alias: None,
+                },
+                right: Table {
+                    prefix: None,
+                    name: Token::Ident("b"),
+                    alias: None,
+                },
+                columns: vec![
+                    Field {
+                        prefix: None,
+                        name: Token::Ident("q")
+                    },
+                    Field {
+                        prefix: None,
+                        name: Token::Ident("w")
+                    },
+                    Field {
+                        prefix: None,
+                        name: Token::Ident("e")
+                    },
+                ]
+            }))],
+            limit: None,
         })))
     );
 }

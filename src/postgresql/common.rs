@@ -1,7 +1,7 @@
 use crate::error::{Error as ParserError, ErrorType};
 use crate::postgresql::{Keyword, Token};
-use alloc::vec::Vec;
 use alloc::boxed::Box;
+use alloc::vec::Vec;
 
 #[derive(Debug, PartialEq)]
 pub enum TableType<'a> {
@@ -19,14 +19,18 @@ pub struct Table<'a> {
 #[derive(Debug, PartialEq)]
 pub enum InnerJoin<'a> {
     Using {
-        left: TableType<'a>,
-        right: TableType<'a>,
-        columns: Vec<Token<'a>>
+        left: Table<'a>,
+        right: Table<'a>,
+        columns: Vec<Field<'a>>,
     },
     Condition {
-        left: TableType<'a>,
-        right: TableType<'a>,
-        operator: Operator<'a>
+        left: Table<'a>,
+        right: Table<'a>,
+        condition: Expr<'a>,
+    },
+    Natural {
+        left: Table<'a>,
+        right: Table<'a>,
     },
 }
 
@@ -38,26 +42,39 @@ pub struct Column<'a> {
 }
 
 #[derive(Debug, PartialEq)]
+pub struct Field<'a> {
+    pub prefix: Option<Token<'a>>,
+    pub name: Token<'a>,
+}
+
+#[derive(Debug, PartialEq)]
 pub struct Limit<'a> {
     pub from: Option<Token<'a>>,
     pub limit: Token<'a>,
 }
 
 #[derive(Debug, PartialEq)]
-pub enum Operator<'a> {
-    Token(Token<'a>),
+pub enum Expr<'a> {
+    Number(Token<'a>),
+    Integer(Token<'a>),
+    BigInteger(Token<'a>),
+    Float(Token<'a>),
+    String(Token<'a>),
+    Unicode(Token<'a>),
+    Params(Token<'a>),
+    Field(Field<'a>),
     And(Box<And<'a>>),
     Eq(Box<Eq<'a>>),
 }
 
 #[derive(Debug, PartialEq)]
 pub struct And<'a> {
-    left: Box<Operator<'a>>,
-    right: Box<Operator<'a>>,
+    left: Box<Expr<'a>>,
+    right: Box<Expr<'a>>,
 }
 
 #[derive(Debug, PartialEq)]
 pub struct Eq<'a> {
-    left: Box<Operator<'a>>,
-    right: Box<Operator<'a>>,
+    left: Box<Expr<'a>>,
+    right: Box<Expr<'a>>,
 }
