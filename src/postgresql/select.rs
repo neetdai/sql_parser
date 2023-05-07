@@ -405,25 +405,18 @@ impl<'a> Select<'a> {
         }
 
         let mut limit = {
-            match lexer.next() {
-                Some(Ok(Token::Number(number))) => Limit {
-                    from: None,
-                    limit: Token::Number(number),
-                },
-                Some(Ok(Token::Integer(number))) => Limit {
-                    from: None,
-                    limit: Token::Integer(number),
-                },
-                Some(Ok(Token::BigInteger(number))) => Limit {
-                    from: None,
-                    limit: Token::BigInteger(number),
-                },
-                Some(Ok(Token::Float(number))) => Limit {
-                    from: None,
-                    limit: Token::Float(number),
-                },
+            let limit = match lexer.next() {
+                Some(Ok(Token::Number(number))) => Token::Number(number),
+                Some(Ok(Token::Integer(number))) => Token::Integer(number),
+                Some(Ok(Token::BigInteger(number))) => Token::BigInteger(number),
+                Some(Ok(Token::Float(number))) => Token::Float(number),
                 Some(Ok(_)) | None => return Some(Err(ParserError::Syntax)),
                 Some(Err(e)) => return Some(Err(e)),
+            };
+
+            Limit {
+                from: None,
+                limit,
             }
         };
 
@@ -475,9 +468,7 @@ impl<'a> Select<'a> {
             },
             Some(Ok(Token::Number(_))) => lexer.next().map(|result| result.map(Expr::Number)),
             Some(Ok(Token::Integer(_))) => lexer.next().map(|result| result.map(Expr::Integer)),
-            Some(Ok(Token::BigInteger(_))) => {
-                lexer.next().map(|result| result.map(Expr::BigInteger))
-            }
+            Some(Ok(Token::BigInteger(_))) => lexer.next().map(|result| result.map(Expr::BigInteger)),
             Some(Ok(Token::Float(_))) => lexer.next().map(|result| result.map(Expr::Float)),
             Some(Ok(Token::String(_))) => lexer.next().map(|result| result.map(Expr::String)),
             Some(Ok(Token::Unicode(_))) => lexer.next().map(|result| result.map(Expr::Unicode)),
