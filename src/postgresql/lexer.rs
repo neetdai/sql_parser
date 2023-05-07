@@ -198,7 +198,9 @@ impl<'a> Lexer<'a> {
             }
             Some((_, '=')) => {
                 self.scanner.next();
-                Some(Ok(Token::Equal))
+                self.next_if(|(_, c)| *c == '=')
+                    .map(|_| Ok(Token::DoubleEqual))
+                    .or(Some(Ok(Token::Equal)))
             }
             Some((_, '>')) => {
                 self.scanner.next();
@@ -590,6 +592,7 @@ fn scan_symbol() {
     compare(vec![
         (",", Token::Comma),
         ("=", Token::Equal),
+        ("==", Token::DoubleEqual),
         (">", Token::Greater),
         (">=", Token::GreaterOrEqual),
         ("<", Token::Less),
