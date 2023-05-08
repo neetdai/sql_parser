@@ -61,7 +61,7 @@ impl<'a> Lexer<'a> {
     // 扫描关键字或标识符, 消费迭代器
     // SQL标识符和关键词必须以一个字母（a-z，也可以是带变音符的字母和非拉丁字母）或一个下划线（_）开始。后续字符可以是字母、下划线（_）、数字（0-9）或美元符号（$）
     // http://www.postgres.cn/docs/12/sql-syntax-lexical.html#SQL-SYNTAX-IDENTIFIERS
-    fn scan_ident_quato(&mut self) -> Option<Result<Token<'a>, ParserError>> {
+    fn scan_ident_quato(&mut self) -> Option<Result<Token<'a>, ParserError<'a>>> {
         let (begin, end) =
             self.while_next_if(|(_, c)| c.is_ascii_alphanumeric() || *c == '_' || *c == '$')?;
 
@@ -81,7 +81,7 @@ impl<'a> Lexer<'a> {
     }
 
     // 扫描数字, 消费迭代器
-    fn scan_number(&mut self) -> Option<Result<Token<'a>, ParserError>> {
+    fn scan_number(&mut self) -> Option<Result<Token<'a>, ParserError<'a>>> {
         let (begin, mut end) = self.while_next_if(|(_, c)| c.is_ascii_digit())?;
 
         // 如果一个不包含小数点和指数的数字常量的值适合类型integer（32 位），它首先被假定为类型integer。
@@ -125,7 +125,7 @@ impl<'a> Lexer<'a> {
     }
 
     // 扫描科学计数法
-    fn scan_scientific_notation(&mut self) -> Option<Result<(usize, usize), ParserError>> {
+    fn scan_scientific_notation(&mut self) -> Option<Result<(usize, usize), ParserError<'a>>> {
         let (begin, _) = self.next_if(|(_, c)| *c == 'e' || *c == 'E')?;
         let mut end = begin;
 
@@ -152,7 +152,7 @@ impl<'a> Lexer<'a> {
     }
 
     // 扫描负整数
-    fn scan_negative_number(&mut self) -> Option<Result<(usize, usize), ParserError>> {
+    fn scan_negative_number(&mut self) -> Option<Result<(usize, usize), ParserError<'a>>> {
         let (begin, end) = self.next_if(|(_, c)| *c == '-')?;
 
         Some(
@@ -169,7 +169,7 @@ impl<'a> Lexer<'a> {
     }
 
     // 扫描以小数点为前缀的数字
-    fn scan_decimal_prefix(&mut self) -> Option<Result<Token<'a>, ParserError>> {
+    fn scan_decimal_prefix(&mut self) -> Option<Result<Token<'a>, ParserError<'a>>> {
         let (begin, _) = self.next_if(|(_, c)| *c == '.')?;
         let mut end = begin;
 
@@ -190,7 +190,7 @@ impl<'a> Lexer<'a> {
     }
 
     // 扫描符号
-    fn scan_symbol(&mut self) -> Option<Result<Token<'a>, ParserError>> {
+    fn scan_symbol(&mut self) -> Option<Result<Token<'a>, ParserError<'a>>> {
         match self.scanner.peek() {
             Some((_, ',')) => {
                 self.scanner.next();
@@ -331,7 +331,7 @@ impl<'a> Lexer<'a> {
     }
 
     // 扫描字符串
-    fn scan_string(&mut self) -> Option<Result<Token<'a>, ParserError>> {
+    fn scan_string(&mut self) -> Option<Result<Token<'a>, ParserError<'a>>> {
         self.scan_str().map(|result| result.map(Token::String))
     }
 
@@ -350,7 +350,7 @@ impl<'a> Lexer<'a> {
     // SELECT 'foo'      'bar';
     //
     // 则不是合法的语法（这种有些奇怪的行为是SQL指定的，PostgreSQL遵循了该标准）。
-    fn scan_str(&mut self) -> Option<Result<String, ParserError>> {
+    fn scan_str(&mut self) -> Option<Result<String, ParserError<'a>>> {
         let mut s = String::new();
 
         let begin = self.next_if(|(_, c)| *c == '\'').map(|(index, _)| index)? + 1;
@@ -395,7 +395,7 @@ impl<'a> Lexer<'a> {
 
     // 扫描utf16
     // 在引号内，Unicode字符可以以转义的形式指定：反斜线接上4位16进制代码点号码或者反斜线和加号接上6位16进制代码点号码。
-    fn scan_unicode(&mut self) -> Option<Result<Token<'a>, ParserError>> {
+    fn scan_unicode(&mut self) -> Option<Result<Token<'a>, ParserError<'a>>> {
         let begin = self
             .next_if(|(_, c)| *c == 'U' || *c == 'u')
             .map(|(index, _)| index)?;
@@ -475,7 +475,7 @@ impl<'a> Lexer<'a> {
     }
 
     // 扫描参数占位符
-    fn scan_params_position(&mut self) -> Option<Result<Token<'a>, ParserError>> {
+    fn scan_params_position(&mut self) -> Option<Result<Token<'a>, ParserError<'a>>> {
         self.next_if(|(_, c)| *c == '$')?;
         let (begin, end) = self.while_next_if(|(_, c)| c.is_ascii_digit())?;
 
@@ -484,7 +484,7 @@ impl<'a> Lexer<'a> {
 }
 
 impl<'a> Iterator for Lexer<'a> {
-    type Item = Result<Token<'a>, ParserError>;
+    type Item = Result<Token<'a>, ParserError<'a>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.consume_whitespace();
@@ -850,7 +850,7 @@ fn scan_sql_text() {
     use alloc::vec;
     let mut lexer = Lexer::new("select * from a");
     assert_eq!(
-        lexer.collect::<Vec<Result<Token<'_>, ParserError>>>(),
+        lexer.collect::<Vec<Result<Token<'_>, ParserError<'_>>>>(),
         vec![
             Ok(Token::Keyword(Keyword::Select)),
             Ok(Token::Mul),
@@ -861,7 +861,7 @@ fn scan_sql_text() {
 
     let mut lexer = Lexer::new("select * from a.b");
     assert_eq!(
-        lexer.collect::<Vec<Result<Token<'_>, ParserError>>>(),
+        lexer.collect::<Vec<Result<Token<'_>, ParserError<'_>>>>(),
         vec![
             Ok(Token::Keyword(Keyword::Select)),
             Ok(Token::Mul),
@@ -874,7 +874,7 @@ fn scan_sql_text() {
 
     let mut lexer = Lexer::new("select * from a limit 10");
     assert_eq!(
-        lexer.collect::<Vec<Result<Token<'_>, ParserError>>>(),
+        lexer.collect::<Vec<Result<Token<'_>, ParserError<'_>>>>(),
         vec![
             Ok(Token::Keyword(Keyword::Select)),
             Ok(Token::Mul),
@@ -887,7 +887,7 @@ fn scan_sql_text() {
 
     let mut lexer = Lexer::new("select * from a where b = $1");
     assert_eq!(
-        lexer.collect::<Vec<Result<Token<'_>, ParserError>>>(),
+        lexer.collect::<Vec<Result<Token<'_>, ParserError<'_>>>>(),
         vec![
             Ok(Token::Keyword(Keyword::Select)),
             Ok(Token::Mul),

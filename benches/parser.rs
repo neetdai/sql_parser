@@ -6,17 +6,17 @@ fn basic_queries(c: &mut Criterion) {
 
     let query_text = "select * from a";
     group.bench_function("select", |b| {
-        b.iter(|| parse(black_box(query_text)).unwrap().unwrap());
+        b.iter(|| parse(black_box(query_text)).unwrap());
     });
 
     let query_text = "select a.b as a, c.d as c from w.q as w";
     group.bench_function("select colum 1", |b| {
-        b.iter(|| parse(black_box(query_text)).unwrap().unwrap());
+        b.iter(|| parse(black_box(query_text)).unwrap());
     });
 
     let query_text = "select * from a inner join b using (q, w, e)";
     group.bench_function("select inner join", |b| {
-        b.iter(|| parse(black_box(query_text)).unwrap().unwrap());
+        b.iter(|| parse(black_box(query_text)).unwrap());
     });
 }
 

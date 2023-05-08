@@ -9,13 +9,11 @@ pub enum Statement<'a> {
 }
 
 impl<'a> Statement<'a> {
-    pub(crate) fn new(mut lexer: Lexer<'a>) -> Option<Result<Self, ParserError>> {
-        match lexer.next()? {
-            Ok(Token::Keyword(keyword)) => match keyword {
-                Keyword::Select => match Select::new(lexer)? {
-                    Ok(select) => Some(Ok(Self::Select(select))),
-                    Err(e) => Some(Err(e)),
-                },
+    pub(crate) fn new(mut lexer: Lexer<'a>) -> Result<Self, ParserError<'a>> {
+        let mut lexer = lexer.peekable();
+        match lexer.peek() {
+            Some(Ok(Token::Keyword(keyword))) => match keyword {
+                Keyword::Select => Select::new(&mut lexer).map(Self::Select),
                 _ => todo!(),
             },
             _ => todo!(),
@@ -32,7 +30,7 @@ fn select_statement() {
     let statement = Statement::new(lexer);
     assert_eq!(
         statement,
-        Some(Ok(Statement::Select(Select {
+        Ok(Statement::Select(Select {
             columns: vec![Column {
                 prefix: None,
                 name: Token::Mul,
@@ -44,14 +42,14 @@ fn select_statement() {
                 alias: None,
             })],
             limit: None,
-        })))
+        }))
     );
 
     let mut lexer = Lexer::new("select a.b as b, c.d as d from w.q as a, e.r as c");
     let statement = Statement::new(lexer);
     assert_eq!(
         statement,
-        Some(Ok(Statement::Select(Select {
+        Ok(Statement::Select(Select {
             columns: vec![
                 Column {
                     prefix: Some(Token::Ident("a")),
@@ -77,7 +75,7 @@ fn select_statement() {
                 })
             ],
             limit: None,
-        })))
+        }))
     );
 }
 
@@ -90,7 +88,7 @@ fn test_select_limit() {
     let statement = Statement::new(lexer);
     assert_eq!(
         statement,
-        Some(Ok(Statement::Select(Select {
+        Ok(Statement::Select(Select {
             columns: vec![Column {
                 prefix: None,
                 name: Token::Mul,
@@ -105,14 +103,14 @@ fn test_select_limit() {
                 from: None,
                 limit: Token::Integer("10"),
             }),
-        })))
+        }))
     );
 
     let mut lexer = Lexer::new("select * from a limit 10, 50");
     let statement = Statement::new(lexer);
     assert_eq!(
         statement,
-        Some(Ok(Statement::Select(Select {
+        Ok(Statement::Select(Select {
             columns: vec![Column {
                 prefix: None,
                 name: Token::Mul,
@@ -127,7 +125,7 @@ fn test_select_limit() {
                 from: Some(Token::Integer("10")),
                 limit: Token::Integer("50"),
             }),
-        })))
+        }))
     );
 }
 
@@ -141,39 +139,44 @@ fn test_select_inner_join() {
     let statement = Statement::new(lexer);
     assert_eq!(
         statement,
-        Some(Ok(Statement::Select(Select {
+        Ok(Statement::Select(Select {
             columns: vec![Column {
                 prefix: None,
                 name: Token::Mul,
                 alias: None,
             }],
-            tables: vec![TableType::InnerJoin(Box::new(InnerJoin::Using {
-                left: Table {
-                    prefix: None,
-                    name: Token::Ident("a"),
-                    alias: None,
-                },
-                right: Table {
-                    prefix: None,
-                    name: Token::Ident("b"),
-                    alias: None,
-                },
-                columns: vec![
-                    Field {
-                        prefix: None,
-                        name: Token::Ident("q")
-                    },
-                    Field {
-                        prefix: None,
-                        name: Token::Ident("w")
-                    },
-                    Field {
-                        prefix: None,
-                        name: Token::Ident("e")
-                    },
-                ]
-            }))],
+            tables: vec![
+                TableType::Join{
+                    join_type: JoinType::InnerJoin,
+                    oper: Box::new(Join::Using {
+                        left: Table {
+                            prefix: None,
+                            name: Token::Ident("a"),
+                            alias: None,
+                        },
+                        right: Table {
+                            prefix: None,
+                            name: Token::Ident("b"),
+                            alias: None,
+                        },
+                        columns: vec![
+                            Field {
+                                prefix: None,
+                                name: Token::Ident("q")
+                            },
+                            Field {
+                                prefix: None,
+                                name: Token::Ident("w")
+                            },
+                            Field {
+                                prefix: None,
+                                name: Token::Ident("e")
+                            },
+                        ]
+                    })
+                }
+            ],
             limit: None,
-        })))
+        }))
     );
 }

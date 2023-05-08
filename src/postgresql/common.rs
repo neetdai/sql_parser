@@ -6,7 +6,10 @@ use alloc::vec::Vec;
 #[derive(Debug, PartialEq)]
 pub enum TableType<'a> {
     Table(Table<'a>),
-    InnerJoin(Box<InnerJoin<'a>>),
+    Join {
+        join_type: JoinType,
+        oper: Box<Join<'a>>,
+    },
 }
 
 #[derive(Debug, PartialEq)]
@@ -17,7 +20,17 @@ pub struct Table<'a> {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum InnerJoin<'a> {
+pub enum JoinType {
+    InnerJoin,
+    LeftOuterJoin,
+    RightOuterJoin,
+    FullOuterJoin,
+    LeftJoin,
+    RightJoin,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Join<'a> {
     Using {
         left: Table<'a>,
         right: Table<'a>,
