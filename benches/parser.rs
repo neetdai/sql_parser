@@ -18,6 +18,11 @@ fn basic_queries(c: &mut Criterion) {
     group.bench_function("select inner join", |b| {
         b.iter(|| parse(black_box(query_text)).unwrap());
     });
+
+    let query_text = "select * from a where a in (1,2,3) and b = 1 * (1 + 2)";
+    group.bench_function("select where 1", |b| {
+        b.iter(|| parse(black_box(query_text)).unwrap());
+    });
 }
 
 criterion_group!(benches, basic_queries);

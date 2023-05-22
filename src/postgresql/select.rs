@@ -1,5 +1,8 @@
 use crate::error::{Error as ParserError, ErrorType, SyntaxType};
-use crate::postgresql::common::{Column, Expr, Field, Join, JoinType, Limit, Table, TableType};
+use crate::postgresql::common::{
+    Column, Expr, Field, FourFundamentalOperation, Join, JoinType, Limit, LinkOperator, Table,
+    TableType, BinaryOperation,
+};
 use crate::postgresql::{Keyword, Lexer, Token};
 use alloc::boxed::Box;
 use alloc::vec::Vec;
@@ -17,6 +20,7 @@ enum PrefixAliasStatus {
 pub struct Select<'a> {
     pub columns: Vec<Column<'a>>,
     pub tables: Vec<TableType<'a>>,
+    pub r#where: Option<Expr<'a>>,
     pub limit: Option<Limit<'a>>,
 }
 
@@ -38,8 +42,15 @@ impl<'a> Select<'a> {
         let mut select = Select {
             columns,
             tables,
+            r#where: None,
             limit: None,
         };
+
+        match Self::parse_where(lexer) {
+            Some(Ok(r#where)) => select.r#where = Some(r#where),
+            Some(Err(e)) => return Err(e),
+            None => {}
+        }
 
         match Self::parse_limit(lexer) {
             Some(Ok(limit)) => select.limit = Some(limit),
@@ -64,6 +75,24 @@ impl<'a> Select<'a> {
             Some(Err(e)) => Err(e),
             None => Err(ParserError::Syntax {
                 expected: SyntaxType::Keyword(expected_keyword),
+                found: SyntaxType::Eof,
+            }),
+        }
+    }
+
+    fn expect_token(
+        lexer: &mut Peekable<Lexer<'a>>,
+        expected_token: Token<'a>,
+    ) -> Result<(), ParserError<'a>> {
+        match lexer.next() {
+            Some(Ok(token)) if token == expected_token => Ok(()),
+            Some(Ok(token)) => Err(ParserError::Syntax {
+                expected: SyntaxType::Token(expected_token),
+                found: SyntaxType::Token(token),
+            }),
+            Some(Err(e)) => Err(e),
+            None => Err(ParserError::Syntax {
+                expected: SyntaxType::Token(expected_token),
                 found: SyntaxType::Eof,
             }),
         }
@@ -222,13 +251,24 @@ impl<'a> Select<'a> {
                 }
                 Some(Ok(_)) if !matches!(field_status, PrefixAliasStatus::None) => {
                     let token = lexer.next().unwrap().unwrap();
-                    return Some(Err(ParserError::Syntax { expected: SyntaxType::Column, found: SyntaxType::Token(token) } ))
+                    return Some(Err(ParserError::Syntax {
+                        expected: SyntaxType::Column,
+                        found: SyntaxType::Token(token),
+                    }));
                 }
-                Some(Err(_)) => {
-                    match lexer.next() {
-                        Some(Ok(token)) => return Some(Err(ParserError::Syntax { expected: SyntaxType::Column, found: SyntaxType::Token(token) } )),
-                        Some(Err(e)) => return Some(Err(e)),
-                        None => return Some(Err(ParserError::Syntax { expected: SyntaxType::Column, found: SyntaxType::Eof } )),
+                Some(Err(_)) => match lexer.next() {
+                    Some(Ok(token)) => {
+                        return Some(Err(ParserError::Syntax {
+                            expected: SyntaxType::Column,
+                            found: SyntaxType::Token(token),
+                        }))
+                    }
+                    Some(Err(e)) => return Some(Err(e)),
+                    None => {
+                        return Some(Err(ParserError::Syntax {
+                            expected: SyntaxType::Column,
+                            found: SyntaxType::Eof,
+                        }))
                     }
                 },
                 Some(Ok(_)) | None => break,
@@ -250,14 +290,13 @@ impl<'a> Select<'a> {
                         Some(Ok(Token::Keyword(Keyword::Inner)))
                         | Some(Ok(Token::Keyword(Keyword::Left)))
                         | Some(Ok(Token::Keyword(Keyword::Right)))
-                        | Some(Ok(Token::Keyword(Keyword::Join))) => {
+                        | Some(Ok(Token::Keyword(Keyword::Join)))
+                        | Some(Ok(Token::Keyword(Keyword::Full))) => {
                             match Self::parse_join(lexer, table) {
                                 Ok(inner_join) => tables.push(inner_join),
                                 Err(e) => return Err(e),
                             }
                         }
-                        Some(Ok(Token::Keyword(Keyword::Left))) => todo!(),
-                        Some(Ok(Token::Keyword(Keyword::Right))) => todo!(),
                         _ => tables.push(TableType::Table(table)),
                     },
                     Some(Err(e)) => return Err(e),
@@ -358,10 +397,10 @@ impl<'a> Select<'a> {
             }
             Ok(Token::Keyword(Keyword::Left)) => {
                 match lexer.next().ok_or(ParserError::Syntax {
-                    expected: SyntaxType::Join,
+                    expected: SyntaxType::LeftJoin,
                     found: SyntaxType::Eof,
                 })? {
-                    Ok(Token::Keyword(Keyword::Inner)) => Ok(JoinType::LeftJoin),
+                    Ok(Token::Keyword(Keyword::Join)) => Ok(JoinType::LeftJoin),
                     Ok(Token::Keyword(Keyword::Outer))
                         if lexer
                             .next_if_eq(&Ok(Token::Keyword(Keyword::Join)))
@@ -370,7 +409,7 @@ impl<'a> Select<'a> {
                         Ok(JoinType::LeftOuterJoin)
                     }
                     Ok(token) => Err(ParserError::Syntax {
-                        expected: SyntaxType::Join,
+                        expected: SyntaxType::LeftOuterJoin,
                         found: SyntaxType::Token(token),
                     }),
                     Err(e) => Err(e),
@@ -378,10 +417,10 @@ impl<'a> Select<'a> {
             }
             Ok(Token::Keyword(Keyword::Right)) => {
                 match lexer.next().ok_or(ParserError::Syntax {
-                    expected: SyntaxType::Join,
+                    expected: SyntaxType::RightJoin,
                     found: SyntaxType::Eof,
                 })? {
-                    Ok(Token::Keyword(Keyword::Inner)) => Ok(JoinType::RightJoin),
+                    Ok(Token::Keyword(Keyword::Join)) => Ok(JoinType::RightJoin),
                     Ok(Token::Keyword(Keyword::Outer))
                         if lexer
                             .next_if_eq(&Ok(Token::Keyword(Keyword::Join)))
@@ -390,7 +429,27 @@ impl<'a> Select<'a> {
                         Ok(JoinType::RightOuterJoin)
                     }
                     Ok(token) => Err(ParserError::Syntax {
-                        expected: SyntaxType::Join,
+                        expected: SyntaxType::RightOutJoin,
+                        found: SyntaxType::Token(token),
+                    }),
+                    Err(e) => Err(e),
+                }
+            }
+            Ok(Token::Keyword(Keyword::Full)) => {
+                match lexer.next().ok_or(ParserError::Syntax {
+                    expected: SyntaxType::FullJoin,
+                    found: SyntaxType::Eof,
+                })? {
+                    Ok(Token::Keyword(Keyword::Join)) => Ok(JoinType::FullJoin),
+                    Ok(Token::Keyword(Keyword::Outer))
+                        if lexer
+                            .next_if_eq(&Ok(Token::Keyword(Keyword::Join)))
+                            .is_some() =>
+                    {
+                        Ok(JoinType::FullOuterJoin)
+                    }
+                    Ok(token) => Err(ParserError::Syntax {
+                        expected: SyntaxType::FullOuterJoin,
                         found: SyntaxType::Token(token),
                     }),
                     Err(e) => Err(e),
@@ -424,62 +483,16 @@ impl<'a> Select<'a> {
                 todo!()
             }
             Some(Ok(Token::Keyword(Keyword::Using))) => {
-                let result = Self::parse_paren(
-                    lexer,
-                    |lexer| -> Option<Result<Vec<Field<'a>>, ParserError<'a>>> {
-                        let mut collect = Vec::new();
-                        loop {
-                            let token = lexer.peek();
-                            if token.is_none() {
-                                return Some(Err(ParserError::Syntax {expected: SyntaxType::Column, found: SyntaxType::Eof }));
-                            } else {
-                                match token.unwrap() {
-                                    Ok(Token::Ident(_)) => {
-                                        match Self::parse_single_field(lexer) {
-                                            Some(Ok(field)) => collect.push(field),
-                                            Some(Err(e)) => return Some(Err(e)),
-                                            None => {}
-                                        }
-                                    }
-                                    Ok(Token::Comma) => {
-                                        lexer.next();
-                                    }
-                                    Ok(Token::RParen) => break,
-                                    Ok(token) => {
-                                        return lexer.next().map(|result| match result {
-                                            Ok(token) => Err(ParserError::Syntax { expected: SyntaxType::Column, found: SyntaxType::Token(token) }),
-                                            Err(e) => Err(e),
-                                        })
-                                    }
-                                    Err(e) => {
-                                        match lexer.next() {
-                                            Some(Ok(token)) => return Some(Err(ParserError::Syntax { expected: SyntaxType::Column, found: SyntaxType::Token(token) } )),
-                                            Some(Err(e)) => return Some(Err(e)),
-                                            None => return Some(Err(ParserError::Syntax { expected: SyntaxType::Column, found: SyntaxType::Eof } )),
-                                        }
-                                    },
-                                }
-                            }
-                        }
+                let collect = Self::parse_fields_range(lexer)?;
 
-                        Some(Ok(collect))
-                    },
-                );
-
-                match result {
-                    Some(Ok(collect)) => {
-                        Ok(TableType::Join {
-                            join_type,
-                            oper: Box::new(Join::Using {
-                                left: left_table,
-                                right: right_table,
-                                columns: collect,
-                            })
-                        })
-                    }
-                    Some(Err(e)) => Err(e),
-                    None => Err(ParserError::Invalid),
-                }
+                Ok(TableType::Join {
+                    join_type,
+                    oper: Box::new(Join::Using {
+                        left: left_table,
+                        right: right_table,
+                        columns: collect,
+                    }),
+                })
             }
             Some(Ok(Token::Keyword(Keyword::Natural))) => Ok(TableType::Join {
                 join_type,
@@ -494,16 +507,15 @@ impl<'a> Select<'a> {
                     found: SyntaxType::Token(token),
                 })
             }
-            Some(Err(e)) => return Err(e),
-            None => {
-                return Err(ParserError::Syntax {
-                    expected: SyntaxType::Join,
-                    found: SyntaxType::Eof,
-                })
-            }
+            Some(Err(e)) => Err(e),
+            None => Err(ParserError::Syntax {
+                expected: SyntaxType::Join,
+                found: SyntaxType::Eof,
+            }),
         }
     }
 
+    // 解析limit
     fn parse_limit(lexer: &mut Peekable<Lexer<'a>>) -> Option<Result<Limit<'a>, ParserError<'a>>> {
         match lexer.next_if_eq(&Ok(Token::Keyword(Keyword::Limit)))? {
             Ok(Token::Keyword(Keyword::Limit)) => {}
@@ -521,10 +533,7 @@ impl<'a> Select<'a> {
                 Some(Err(e)) => return Some(Err(e)),
             };
 
-            Limit {
-                from: None,
-                limit,
-            }
+            Limit { from: None, limit }
         };
 
         if let Some(Ok(Token::Comma)) = lexer.next() {
@@ -553,72 +562,397 @@ impl<'a> Select<'a> {
         Some(Ok(limit))
     }
 
-    // // // 生成条件语句
-    // // fn consume_condition(lexer: &mut Peekable<Lexer<'a>>) -> Option<Result<Expr<'a>, ParserError>> {
-    // //     let result = Self::parse_paren(lexer, |lexer| {
-
-    // //     });
-
-    // // }
-
-    // fn consume_condition_value(
-    //     lexer: &mut Peekable<Lexer<'a>>,
-    // ) -> Option<Result<Expr<'a>, ParserError>> {
-    //     match lexer.peek() {
-    //         Some(Ok(Token::Ident(_))) => match Self::parse_single_field(lexer) {
-    //             Some(Ok(left_field)) => {
-    //                 lexer.next();
-    //                 Some(Ok(Expr::Field(left_field)))
-    //             }
-    //             Some(Err(e)) => return Some(Err(e)),
-    //             None => return Some(Err(ParserError::Syntax)),
-    //         },
-    //         Some(Ok(Token::Number(_))) => lexer.next().map(|result| result.map(Expr::Number)),
-    //         Some(Ok(Token::Integer(_))) => lexer.next().map(|result| result.map(Expr::Integer)),
-    //         Some(Ok(Token::BigInteger(_))) => lexer.next().map(|result| result.map(Expr::BigInteger)),
-    //         Some(Ok(Token::Float(_))) => lexer.next().map(|result| result.map(Expr::Float)),
-    //         Some(Ok(Token::String(_))) => lexer.next().map(|result| result.map(Expr::String)),
-    //         Some(Ok(Token::Unicode(_))) => lexer.next().map(|result| result.map(Expr::Unicode)),
-    //         Some(Ok(Token::Params(_))) => lexer.next().map(|result| result.map(Expr::Params)),
-    //         Some(Err(_)) => lexer.next().map(|result| {
-    //             if let Err(e) = result {
-    //                 Err(e)
-    //             } else {
-    //                 Err(ParserError::Syntax)
-    //             }
-    //         }),
-    //         Some(Ok(_)) | None => return None,
-    //     }
-    // }
-
-    // 消耗括号
-    // 如果一开始匹配不到左括号, 返回None
-    // 如果最后匹配不到右括号, 返回Some(Err(ParserError::Syntax))
-    // 中间调用func去获取结果, 处理成功会将结果返回
-    fn parse_paren<F, T>(
+    // 收集括号中的字段
+    fn parse_fields_range(
         lexer: &mut Peekable<Lexer<'a>>,
-        func: F,
-    ) -> Option<Result<T, ParserError<'a>>>
-    where
-        F: Fn(&mut Peekable<Lexer<'a>>) -> Option<Result<T, ParserError<'a>>>,
-    {
-        lexer.next_if_eq(&Ok(Token::LParen))?;
+    ) -> Result<Vec<Field<'a>>, ParserError<'a>> {
+        Self::expect_token(lexer, Token::LParen)?;
 
-        let result = func(lexer);
-
-        match lexer.next() {
-            Some(Ok(Token::RParen)) => {},
-            Some(Ok(token)) => return Some(Err(ParserError::Syntax { expected: SyntaxType::Token(Token::RParen), found: SyntaxType::Token(token) })),
-            Some(Err(e)) => return Some(Err(e)),
-            None => return Some(Err(ParserError::Syntax { expected: SyntaxType::Token(Token::RParen), found: SyntaxType::Eof })),
+        let mut fields = Vec::new();
+        loop {
+            match lexer.peek() {
+                Some(Ok(Token::Ident(_))) => match Self::parse_single_field(lexer) {
+                    Some(Ok(field)) => {
+                        fields.push(field);
+                    }
+                    Some(Err(e)) => return Err(e),
+                    None => {
+                        return Err(ParserError::Syntax {
+                            expected: SyntaxType::Column,
+                            found: SyntaxType::Eof,
+                        })
+                    }
+                },
+                Some(Ok(Token::Comma)) => {
+                    lexer.next();
+                }
+                Some(Ok(Token::RParen)) => {
+                    break;
+                }
+                Some(_) => match lexer.next() {
+                    Some(Ok(token)) => {
+                        return Err(ParserError::Syntax {
+                            expected: SyntaxType::Column,
+                            found: SyntaxType::Token(token),
+                        })
+                    }
+                    Some(Err(e)) => return Err(e),
+                    None => {
+                        return Err(ParserError::Syntax {
+                            expected: SyntaxType::Column,
+                            found: SyntaxType::Eof,
+                        })
+                    }
+                },
+                None => {
+                    return Err(ParserError::Syntax {
+                        expected: SyntaxType::Column,
+                        found: SyntaxType::Eof,
+                    })
+                }
+            }
         }
 
-        result
+        Self::expect_token(lexer, Token::RParen)?;
+
+        Ok(fields)
     }
 
-    // // fn consume_operator(
-    // //     lexer: &mut Peekable<Lexer<'a>>,
-    // //     left_expr: Expr<'a>,
-    // // ) -> Result<Expr<'a>, ParserError> {
-    // // }
+    fn parse_where(lexer: &mut Peekable<Lexer<'a>>) -> Option<Result<Expr<'a>, ParserError<'a>>> {
+        lexer
+            .next_if_eq(&Ok(Token::Keyword(Keyword::Where)))
+            .map(|_| Self::parse_expr(lexer))
+    }
+
+    fn parse_expr_value(lexer: &mut Peekable<Lexer<'a>>) -> Result<Expr<'a>, ParserError<'a>> {
+        match lexer.peek() {
+            Some(Ok(Token::Ident(_))) => match Self::parse_single_field(lexer) {
+                Some(Ok(left_field)) => Ok(Expr::Field(left_field)),
+                Some(Err(e)) => return Err(e),
+                None => {
+                    return Err(ParserError::Syntax {
+                        expected: SyntaxType::Expr,
+                        found: SyntaxType::Eof,
+                    });
+                }
+            },
+            Some(Ok(Token::Number(_))) => lexer.next().unwrap().map(|token| {
+                let Token::Number(content) = token else { unreachable!() };
+                Expr::Number(content)
+            }),
+            Some(Ok(Token::Integer(_))) => lexer.next().unwrap().map(|token| {
+                let Token::Integer(content) = token else { unreachable!() };
+                Expr::Integer(content)
+            }),
+            Some(Ok(Token::BigInteger(_))) => lexer.next().unwrap().map(|token| {
+                let Token::BigInteger(content) = token else { unreachable!() };
+                Expr::BigInteger(content)
+            }),
+            Some(Ok(Token::Float(_))) => lexer.next().unwrap().map(|token| {
+                let Token::Float(content) = token else { unreachable!() };
+                Expr::Float(content)
+            }),
+            Some(Ok(Token::String(_))) => lexer.next().unwrap().map(|token| {
+                let Token::String(content) = token else { unreachable!() };
+                Expr::String(content)
+            }),
+            Some(Ok(Token::Unicode(_))) => lexer.next().unwrap().map(|token| {
+                let Token::Unicode(content) = token else { unreachable!() };
+                Expr::Unicode(content)
+            }),
+            Some(Ok(Token::Params(_))) => lexer.next().unwrap().map(|token| {
+                let Token::Params(content) = token else { unreachable!() };
+                Expr::Params(content)
+            }),
+            Some(_) => match lexer.next().unwrap() {
+                Ok(token) => Err(ParserError::Syntax {
+                    expected: SyntaxType::Expr,
+                    found: SyntaxType::Token(token),
+                }),
+                Err(e) => Err(e),
+            },
+            None => Err(ParserError::Syntax {
+                expected: SyntaxType::Expr,
+                found: SyntaxType::Eof,
+            }),
+        }
+    }
+
+    fn parse_expr(lexer: &mut Peekable<Lexer<'a>>) -> Result<Expr<'a>, ParserError<'a>> {
+        let mut paren_count = 0isize;
+
+        if lexer.next_if_eq(&Ok(Token::LParen)).is_some() {
+            paren_count += 1;
+        }
+
+        let expr = match lexer.peek() {
+            Some(Ok(Token::Ident(_)))
+            | Some(Ok(Token::Float(_)))
+            | Some(Ok(Token::Integer(_)))
+            | Some(Ok(Token::BigInteger(_)))
+            | Some(Ok(Token::Number(_)))
+            | Some(Ok(Token::String(_)))
+            | Some(Ok(Token::Unicode(_))) => {
+                let mut expr = Self::parse_expr_value(lexer)?;
+
+                loop {
+                    match lexer.peek() {
+                        Some(Ok(Token::Equal))
+                        | Some(Ok(Token::Keyword(Keyword::And)))
+                        | Some(Ok(Token::Keyword(Keyword::Or)))
+                        | Some(Ok(Token::Keyword(Keyword::Between)))
+                        | Some(Ok(Token::Keyword(Keyword::In))) => {
+                            expr = Self::parse_operation(lexer, expr)?;
+                        }
+                        Some(Ok(Token::Plus)) | Some(Ok(Token::Sub)) => {
+                            expr = Self::parse_addtion_and_subtraction(lexer, expr)?;
+                        }
+                        Some(Ok(Token::Mul)) | Some(Ok(Token::Div)) | Some(Ok(Token::Mod)) => {
+                            expr = Self::parse_multiplication_and_division(lexer, expr)?;
+                        }
+                        Some(Ok(Token::DoubleEqual))
+                        | Some(Ok(Token::Less))
+                        | Some(Ok(Token::LessOrEqual))
+                        | Some(Ok(Token::Greater))
+                        | Some(Ok(Token::GreaterOrEqual))
+                        | Some(Ok(Token::Keyword(Keyword::Is)))
+                        | Some(Ok(Token::Keyword(Keyword::Not))) => {
+                            expr = Self::parse_binary_operation(lexer, expr)?;
+                        }
+                        Some(_) | None => break expr,
+                    }
+                }
+            }
+            Some(_) => {
+                let result = lexer.next().unwrap();
+                match result {
+                    Ok(token) => {
+                        return Err(ParserError::Syntax {
+                            expected: SyntaxType::Expr,
+                            found: SyntaxType::Token(token),
+                        });
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
+            None => {
+                return Err(ParserError::Syntax {
+                    expected: SyntaxType::Column,
+                    found: SyntaxType::Eof,
+                });
+            }
+        };
+
+        if lexer.next_if_eq(&Ok(Token::RParen)).is_some() {
+            paren_count -= 1;
+        }
+
+        if paren_count != 0 {
+            Err(ParserError::Invalid)
+        } else {
+            Ok(expr)
+        }
+    }
+
+    // 解析加法和减法
+    fn parse_addtion_and_subtraction(
+        lexer: &mut Peekable<Lexer<'a>>,
+        left_expr: Expr<'a>,
+    ) -> Result<Expr<'a>, ParserError<'a>> {
+        let left_expr = Box::new(left_expr);
+        let fundament_operation = match lexer.next() {
+            Some(Ok(Token::Plus)) => Ok(FourFundamentalOperation::Plus),
+            Some(Ok(Token::Sub)) => Ok(FourFundamentalOperation::Sub),
+            Some(result) => match result {
+                Ok(token) => Err(ParserError::Syntax {
+                    expected: SyntaxType::Token(Token::Plus),
+                    found: SyntaxType::Token(token),
+                }),
+                Err(e) => Err(e),
+            },
+            None => Err(ParserError::Invalid),
+        }?;
+
+        // 因为有 括号 和 乘除 取模 的优先计算
+        match lexer.peek() {
+            Some(Ok(Token::LParen)) => Ok(Expr::FourFundamental {
+                operation_type: fundament_operation,
+                left_expr,
+                right_expr: Box::new(Self::parse_expr(lexer)?),
+            }),
+            _ => {
+                let right_expr = Self::parse_expr_value(lexer)?;
+
+                match lexer.peek() {
+                    Some(Ok(Token::Mul)) | Some(Ok(Token::Div)) | Some(Ok(Token::Mod)) => {
+                        Ok(Expr::FourFundamental {
+                            operation_type: fundament_operation,
+                            left_expr,
+                            right_expr: Box::new(Self::parse_multiplication_and_division(
+                                lexer, right_expr,
+                            )?),
+                        })
+                    }
+                    _ => Ok(Expr::FourFundamental {
+                        operation_type: fundament_operation,
+                        left_expr,
+                        right_expr: Box::new(right_expr),
+                    }),
+                }
+            }
+        }
+    }
+
+    // 解析乘法和除法
+    fn parse_multiplication_and_division(
+        lexer: &mut Peekable<Lexer<'a>>,
+        left_expr: Expr<'a>,
+    ) -> Result<Expr<'a>, ParserError<'a>> {
+        let left_expr = Box::new(left_expr);
+        let fundament_operation = match lexer.next() {
+            Some(Ok(Token::Mul)) => Ok(FourFundamentalOperation::Multiply),
+            Some(Ok(Token::Div)) => Ok(FourFundamentalOperation::Divide),
+            Some(Ok(Token::Mod)) => Ok(FourFundamentalOperation::Modulo),
+            Some(result) => match result {
+                Ok(token) => Err(ParserError::Syntax {
+                    expected: SyntaxType::Token(Token::Mul),
+                    found: SyntaxType::Token(token),
+                }),
+                Err(e) => Err(e),
+            },
+            None => Err(ParserError::Invalid),
+        }?;
+
+        match lexer.peek() {
+            Some(Ok(Token::LParen)) => Ok(Expr::FourFundamental {
+                operation_type: fundament_operation,
+                left_expr,
+                right_expr: Box::new(Self::parse_expr(lexer)?),
+            }),
+            _ => Ok(Expr::FourFundamental {
+                operation_type: fundament_operation,
+                left_expr,
+                right_expr: Box::new(Self::parse_expr_value(lexer)?),
+            }),
+        }
+    }
+
+    // 解析二元操作
+    fn parse_binary_operation(
+        lexer: &mut Peekable<Lexer<'a>>,
+        left_expr: Expr<'a>,
+    ) -> Result<Expr<'a>, ParserError<'a>> {
+        let binary_operator = match lexer.next() {
+            Some(Ok(Token::DoubleEqual)) => BinaryOperation::DoubleEqual,
+            Some(Ok(Token::LessOrEqual)) => BinaryOperation::LessOrEqual,
+            Some(Ok(Token::Less)) => BinaryOperation::Less,
+            Some(Ok(Token::Greater)) => BinaryOperation::Greater,
+            Some(Ok(Token::GreaterOrEqual)) => BinaryOperation::GreaterOrEqual,
+            Some(Ok(Token::Keyword(Keyword::Not))) => BinaryOperation::Not,
+            Some(Ok(Token::Keyword(Keyword::Is))) => BinaryOperation::Is,
+            Some(_) | None => return Err(ParserError::Invalid),
+        };
+
+        Ok(Expr::Binary {
+            operator: binary_operator,
+            left_expr: Box::new(left_expr),
+            right_expr: Box::new(Self::parse_expr_value(lexer)?),
+        })
+    }
+
+    // 解析操作
+    fn parse_operation(
+        lexer: &mut Peekable<Lexer<'a>>,
+        left_expr: Expr<'a>,
+    ) -> Result<Expr<'a>, ParserError<'a>> {
+        let left_expr = Box::new(left_expr);
+
+        match lexer.peek() {
+            Some(Ok(Token::Equal)) => {
+                lexer.next();
+                let right_expr = Box::new(Self::parse_expr(lexer)?);
+                Ok(Expr::Equal {
+                    left_expr,
+                    right_expr,
+                })
+            }
+            Some(Ok(Token::Keyword(Keyword::And))) => {
+                lexer.next();
+                let right_expr = Box::new(Self::parse_expr(lexer)?);
+                Ok(Expr::AndOr {
+                    operator: LinkOperator::And,
+                    left_expr,
+                    right_expr,
+                })
+            }
+            Some(Ok(Token::Keyword(Keyword::Or))) => {
+                lexer.next();
+                let right_expr = Box::new(Self::parse_expr(lexer)?);
+                Ok(Expr::AndOr {
+                    operator: LinkOperator::Or,
+                    left_expr,
+                    right_expr,
+                })
+            }
+            Some(Ok(Token::Keyword(Keyword::In))) => {
+                lexer.next();
+                let expr_collection = Self::parse_expr_range(lexer)?;
+                Ok(Expr::In {
+                    target: left_expr,
+                    expr_collection,
+                })
+            }
+            Some(Ok(Token::Keyword(Keyword::Between))) => {
+                let (start, end) = Self::parse_between(lexer)?;
+                let start = Box::new(start);
+                let end = Box::new(end);
+
+                Ok(Expr::Between {
+                    target: left_expr,
+                    start,
+                    end,
+                })
+            }
+            _ => Self::parse_expr(lexer),
+        }
+    }
+
+    fn parse_expr_range(lexer: &mut Peekable<Lexer<'a>>) -> Result<Vec<Expr<'a>>, ParserError<'a>> {
+        Self::expect_token(lexer, Token::LParen)?;
+
+        let mut collections = Vec::new();
+
+        loop {
+            match lexer.peek() {
+                Some(Ok(Token::RParen)) | None => break,
+                Some(Ok(Token::Comma)) => {
+                    lexer.next();
+                }
+                Some(Ok(_)) => collections.push(Self::parse_expr_value(lexer)?),
+                Some(Err(_)) => {
+                    let err = lexer.next().expect("unreachable");
+                    err?;
+                }
+            }
+        }
+
+        Self::expect_token(lexer, Token::RParen)?;
+
+        Ok(collections)
+    }
+
+    // 解析between的范围
+    fn parse_between(
+        lexer: &mut Peekable<Lexer<'a>>,
+    ) -> Result<(Expr<'a>, Expr<'a>), ParserError<'a>> {
+        Self::expect_keyword(lexer, Keyword::Between)?;
+
+        let left_expr = Self::parse_expr_value(lexer)?;
+
+        Self::expect_keyword(lexer, Keyword::And)?;
+
+        let right_expr = Self::parse_expr_value(lexer)?;
+
+        Ok((left_expr, right_expr))
+    }
 }

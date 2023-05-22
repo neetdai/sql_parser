@@ -1,6 +1,7 @@
 use crate::error::{Error as ParserError, ErrorType};
 use crate::postgresql::{Keyword, Token};
 use alloc::boxed::Box;
+use alloc::string::String;
 use alloc::vec::Vec;
 
 #[derive(Debug, PartialEq)]
@@ -24,6 +25,7 @@ pub enum JoinType {
     InnerJoin,
     LeftOuterJoin,
     RightOuterJoin,
+    FullJoin,
     FullOuterJoin,
     LeftJoin,
     RightJoin,
@@ -68,26 +70,68 @@ pub struct Limit<'a> {
 
 #[derive(Debug, PartialEq)]
 pub enum Expr<'a> {
-    Number(Token<'a>),
-    Integer(Token<'a>),
-    BigInteger(Token<'a>),
-    Float(Token<'a>),
-    String(Token<'a>),
-    Unicode(Token<'a>),
-    Params(Token<'a>),
+    Number(&'a str),
+    Integer(&'a str),
+    BigInteger(&'a str),
+    Float(&'a str),
+    String(String),
+    Unicode(String),
+    Params(&'a str),
     Field(Field<'a>),
-    And(Box<And<'a>>),
-    Eq(Box<Eq<'a>>),
+    AndOr {
+        operator: LinkOperator,
+        left_expr: Box<Expr<'a>>,
+        right_expr: Box<Expr<'a>>,
+    },
+    Equal {
+        left_expr: Box<Expr<'a>>,
+        right_expr: Box<Expr<'a>>,
+    },
+    FourFundamental {
+        operation_type: FourFundamentalOperation,
+        left_expr: Box<Expr<'a>>,
+        right_expr: Box<Expr<'a>>,
+    },
+    In {
+        target: Box<Expr<'a>>,
+        expr_collection: Vec<Expr<'a>>,
+    },
+    Between {
+        target: Box<Expr<'a>>,
+        start: Box<Expr<'a>>,
+        end: Box<Expr<'a>>,
+    },
+    Binary {
+        operator: BinaryOperation,
+        left_expr: Box<Expr<'a>>,
+        right_expr: Box<Expr<'a>>,
+    }
 }
 
 #[derive(Debug, PartialEq)]
-pub struct And<'a> {
-    left: Box<Expr<'a>>,
-    right: Box<Expr<'a>>,
+pub enum LinkOperator {
+    And,
+    Or,
+}
+
+// 四则运算符
+#[derive(Debug, PartialEq)]
+pub enum FourFundamentalOperation {
+    Plus,
+    Sub,
+    Multiply,
+    Divide,
+    Modulo,
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Eq<'a> {
-    left: Box<Expr<'a>>,
-    right: Box<Expr<'a>>,
+pub enum BinaryOperation {
+    DoubleEqual,
+    LessOrEqual,
+    Less,
+    Greater,
+    GreaterOrEqual,
+    Not,
+    Is,
+
 }

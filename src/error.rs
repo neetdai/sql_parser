@@ -29,5 +29,12 @@ pub enum SyntaxType<'a> {
     Keyword(Keyword),
     Column,
     Join,
+    LeftJoin,
+    LeftOuterJoin,
+    RightJoin,
+    RightOutJoin,
+    FullJoin,
+    FullOuterJoin,
     Eof,
+    Expr,
 }
