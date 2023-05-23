@@ -212,7 +212,10 @@ impl<'a> Lexer<'a> {
                 self.scanner.next();
                 self.next_if(|(_, c)| *c == '=')
                     .map(|_| Ok(Token::LessOrEqual))
-                    .or(Some(Ok(Token::Less)))
+                    .or(self.next_if(|(_, c)| *c == '>')
+                            .map(|_| Ok(Token::LessOrGreater))
+                            .or(Some(Ok(Token::Less)))
+                    )
             }
             Some((_, '+')) => {
                 self.scanner.next();
@@ -298,6 +301,12 @@ impl<'a> Lexer<'a> {
             Some((_, ':')) => {
                 self.scanner.next();
                 Some(Ok(Token::Colon))
+            }
+            Some((_, '!')) => {
+                self.scanner.next();
+                self.next_if(|(_, c)| *c == '=')
+                    .map(|_| Ok(Token::NotEqual))
+                    .or(Some(Ok(Token::Negative)))
             }
             Some(_) => self.scan_ident_quato(),
             None => None,
@@ -597,6 +606,7 @@ fn scan_symbol() {
         (">=", Token::GreaterOrEqual),
         ("<", Token::Less),
         ("<=", Token::LessOrEqual),
+        ("<>", Token::LessOrGreater),
         ("@", Token::At),
         ("~", Token::Tilde),
         ("+", Token::Plus),
@@ -616,6 +626,8 @@ fn scan_symbol() {
         (";", Token::Eof),
         (":", Token::Colon),
         ("--sdfsdf\n#", Token::Sharp),
+        ("!", Token::Negative),
+        ("!=", Token::NotEqual),
         (
             r#"/* multiline comment
             * with nesting: /* nested block comment */
