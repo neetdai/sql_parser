@@ -50,6 +50,12 @@ pub enum Join<'a> {
 }
 
 #[derive(Debug, PartialEq)]
+pub enum ColumnType<'a> {
+    Column(Column<'a>),
+    Function(Box<Function<'a>>),
+}
+
+#[derive(Debug, PartialEq)]
 pub struct Column<'a> {
     pub prefix: Option<Token<'a>>,
     pub name: Token<'a>,
@@ -133,5 +139,14 @@ pub enum BinaryOperation {
     GreaterOrEqual,
     Not,
     Is,
+    Negative,
+    NotEqual,
+    LessOrGreater,
+}
 
+#[derive(Debug, PartialEq)]
+pub struct Function<'a> {
+    pub name: Token<'a>,
+    pub params: Vec<ColumnType<'a>>,
+    pub alias: Option<Token<'a>>,
 }

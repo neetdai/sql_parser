@@ -31,11 +31,11 @@ fn select_statement() {
     assert_eq!(
         statement,
         Ok(Statement::Select(Select {
-            columns: vec![Column {
+            columns: vec![ColumnType::Column(Column {
                 prefix: None,
                 name: Token::Mul,
                 alias: None,
-            }],
+            })],
             tables: vec![TableType::Table(Table {
                 prefix: None,
                 name: Token::Ident("a"),
@@ -52,16 +52,16 @@ fn select_statement() {
         statement,
         Ok(Statement::Select(Select {
             columns: vec![
-                Column {
+                ColumnType::Column(Column {
                     prefix: Some(Token::Ident("a")),
                     name: Token::Ident("b"),
                     alias: Some(Token::Ident("b")),
-                },
-                Column {
+                }),
+                ColumnType::Column(Column {
                     prefix: Some(Token::Ident("c")),
                     name: Token::Ident("d"),
                     alias: Some(Token::Ident("d")),
-                }
+                })
             ],
             tables: vec![
                 TableType::Table(Table {
@@ -79,6 +79,46 @@ fn select_statement() {
             limit: None,
         }))
     );
+
+    let mut lexer = Lexer::new("select a.* from a");
+    let statement = Statement::new(lexer);
+    assert_eq!(
+        statement,
+        Ok(Statement::Select(Select {
+            columns: vec![ColumnType::Column(Column {
+                prefix: Some(Token::Ident("a")),
+                name: Token::Mul,
+                alias: None,
+            })],
+            tables: vec![TableType::Table(Table {
+                prefix: None,
+                name: Token::Ident("a"),
+                alias: None,
+            })],
+            r#where: None,
+            limit: None,
+        }))
+    );
+
+    let mut lexer = Lexer::new("select a from a");
+    let statement = Statement::new(lexer);
+    assert_eq!(
+        statement,
+        Ok(Statement::Select(Select {
+            columns: vec![ColumnType::Column(Column {
+                prefix: None,
+                name: Token::Ident("a"),
+                alias: None,
+            })],
+            tables: vec![TableType::Table(Table {
+                prefix: None,
+                name: Token::Ident("a"),
+                alias: None,
+            })],
+            r#where: None,
+            limit: None,
+        }))
+    );
 }
 
 #[test]
@@ -91,11 +131,11 @@ fn test_select_limit() {
     assert_eq!(
         statement,
         Ok(Statement::Select(Select {
-            columns: vec![Column {
+            columns: vec![ColumnType::Column(Column {
                 prefix: None,
                 name: Token::Mul,
                 alias: None,
-            }],
+            })],
             tables: vec![TableType::Table(Table {
                 prefix: None,
                 name: Token::Ident("a"),
@@ -114,11 +154,11 @@ fn test_select_limit() {
     assert_eq!(
         statement,
         Ok(Statement::Select(Select {
-            columns: vec![Column {
+            columns: vec![ColumnType::Column(Column {
                 prefix: None,
                 name: Token::Mul,
                 alias: None,
-            }],
+            })],
             tables: vec![TableType::Table(Table {
                 prefix: None,
                 name: Token::Ident("a"),
@@ -175,11 +215,11 @@ fn test_select_inner_join() {
         assert_eq!(
             statement,
             Ok(Statement::Select(Select {
-                columns: vec![Column {
+                columns: vec![ColumnType::Column(Column {
                     prefix: None,
                     name: Token::Mul,
                     alias: None,
-                }],
+                })],
                 tables: vec![TableType::Join {
                     join_type: join_type,
                     oper: Box::new(Join::Using {
@@ -227,11 +267,11 @@ fn test_select_where() {
     assert_eq!(
         statement,
         Ok(Statement::Select(Select {
-            columns: vec![Column {
+            columns: vec![ColumnType::Column(Column {
                 prefix: None,
                 name: Token::Mul,
                 alias: None,
-            }],
+            })],
             tables: vec![TableType::Table(Table {
                 prefix: None,
                 name: Token::Ident("a"),
@@ -255,11 +295,11 @@ fn test_select_where() {
     assert_eq!(
         statement,
         Ok(Statement::Select(Select {
-            columns: vec![Column {
+            columns: vec![ColumnType::Column(Column {
                 prefix: None,
                 name: Token::Mul,
                 alias: None,
-            }],
+            })],
             tables: vec![TableType::Table(Table {
                 prefix: None,
                 name: Token::Ident("a"),
@@ -283,11 +323,11 @@ fn test_select_where() {
     assert_eq!(
         statement,
         Ok(Statement::Select(Select {
-            columns: vec![Column {
+            columns: vec![ColumnType::Column(Column {
                 prefix: None,
                 name: Token::Mul,
                 alias: None,
-            }],
+            })],
             tables: vec![TableType::Table(Table {
                 prefix: None,
                 name: Token::Ident("a"),
@@ -311,11 +351,11 @@ fn test_select_where() {
     assert_eq!(
         statement,
         Ok(Statement::Select(Select {
-            columns: vec![Column {
+            columns: vec![ColumnType::Column(Column {
                 prefix: None,
                 name: Token::Mul,
                 alias: None,
-            }],
+            })],
             tables: vec![TableType::Table(Table {
                 prefix: None,
                 name: Token::Ident("a"),
@@ -337,11 +377,11 @@ fn test_select_where() {
     assert_eq!(
         statement,
         Ok(Statement::Select(Select {
-            columns: vec![Column {
+            columns: vec![ColumnType::Column(Column {
                 prefix: None,
                 name: Token::Mul,
                 alias: None,
-            }],
+            })],
             tables: vec![TableType::Table(Table {
                 prefix: None,
                 name: Token::Ident("a"),
@@ -385,11 +425,11 @@ fn test_select_where() {
     assert_eq!(
         statement,
         Ok(Statement::Select(Select {
-            columns: vec![Column {
+            columns: vec![ColumnType::Column(Column {
                 prefix: None,
                 name: Token::Mul,
                 alias: None,
-            }],
+            })],
             tables: vec![TableType::Table(Table {
                 prefix: None,
                 name: Token::Ident("a"),
@@ -404,26 +444,83 @@ fn test_select_where() {
         }))
     );
 
-    let mut lexer = Lexer::new("select * from a where 2 >= 1");
+}
+
+
+#[test]
+fn test_select_binary_operator() {
+    use crate::postgresql::common::*;
+    use alloc::boxed::Box;
+    use alloc::vec;
+
+    let func = |sql_text: &str, binary_operation: BinaryOperation| {
+        let mut lexer = Lexer::new(sql_text);
+        let statement = Statement::new(lexer);
+        assert_eq!(
+            statement,
+            Ok(Statement::Select(Select {
+                columns: vec![ColumnType::Column(Column {
+                    prefix: None,
+                    name: Token::Mul,
+                    alias: None,
+                })],
+                tables: vec![TableType::Table(Table {
+                    prefix: None,
+                    name: Token::Ident("a"),
+                    alias: None,
+                })],
+                r#where: Some(Expr::Binary {
+                    operator: binary_operation,
+                    left_expr: Box::new(Expr::Integer("2")),
+                    right_expr: Box::new(Expr::Integer("1")),
+                }),
+                limit: None,
+            }))
+        );
+    };
+    
+    let list = vec![
+        ("select * from a where 2 == 1", BinaryOperation::DoubleEqual),
+        ("select * from a where 2 < 1", BinaryOperation::Less),
+        ("select * from a where 2 > 1", BinaryOperation::Greater),
+        ("select * from a where 2 >= 1", BinaryOperation::GreaterOrEqual),
+        ("select * from a where 2 <= 1", BinaryOperation::LessOrEqual),
+        ("select * from a where 2 <> 1", BinaryOperation::LessOrGreater),
+        ("select * from a where 2 >= 1", BinaryOperation::GreaterOrEqual),
+        ("select * from a where 2 != 1", BinaryOperation::NotEqual),
+        ("select * from a where 2 is 1", BinaryOperation::Is),
+        ("select * from a where 2 not 1", BinaryOperation::Not),
+    ];
+}
+
+#[test]
+fn test_select_function() {
+    use crate::postgresql::common::*;
+    use alloc::boxed::Box;
+    use alloc::vec;
+
+    let mut lexer = Lexer::new("select count(a.b) as a_q from a");
     let statement = Statement::new(lexer);
     assert_eq!(
         statement,
         Ok(Statement::Select(Select {
-            columns: vec![Column {
-                prefix: None,
-                name: Token::Mul,
-                alias: None,
-            }],
+            columns: vec![ColumnType::Function(Box::new(Function {
+                name: Token::Ident("count"),
+                params: vec![
+                    ColumnType::Column(Column {
+                        prefix: Some(Token::Ident("a")),
+                        name: Token::Ident("b"),
+                        alias: None,
+                    })
+                ],
+                alias: Some(Token::Ident("a_q")),
+            }))],
             tables: vec![TableType::Table(Table {
                 prefix: None,
                 name: Token::Ident("a"),
                 alias: None,
             })],
-            r#where: Some(Expr::Binary {
-                operator: BinaryOperation::GreaterOrEqual,
-                left_expr: Box::new(Expr::Integer("2")),
-                right_expr: Box::new(Expr::Integer("1")),
-            }),
+            r#where: None,
             limit: None,
         }))
     );

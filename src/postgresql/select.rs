@@ -1,7 +1,7 @@
 use crate::error::{Error as ParserError, ErrorType, SyntaxType};
 use crate::postgresql::common::{
     Column, Expr, Field, FourFundamentalOperation, Join, JoinType, Limit, LinkOperator, Table,
-    TableType, BinaryOperation,
+    TableType, BinaryOperation, ColumnType, Function,
 };
 use crate::postgresql::{Keyword, Lexer, Token};
 use alloc::boxed::Box;
@@ -18,7 +18,7 @@ enum PrefixAliasStatus {
 
 #[derive(Debug, PartialEq)]
 pub struct Select<'a> {
-    pub columns: Vec<Column<'a>>,
+    pub columns: Vec<ColumnType<'a>>,
     pub tables: Vec<TableType<'a>>,
     pub r#where: Option<Expr<'a>>,
     pub limit: Option<Limit<'a>>,
@@ -98,8 +98,8 @@ impl<'a> Select<'a> {
         }
     }
 
-    fn parse_columns(lexer: &mut Peekable<Lexer<'a>>) -> Result<Vec<Column<'a>>, ParserError<'a>> {
-        let mut columns = Vec::<Column<'a>>::new();
+    fn parse_columns(lexer: &mut Peekable<Lexer<'a>>) -> Result<Vec<ColumnType<'a>>, ParserError<'a>> {
+        let mut columns = Vec::<ColumnType<'a>>::new();
         loop {
             match lexer.peek() {
                 Some(Ok(Token::Ident(_))) | Some(Ok(Token::Mul)) => {
@@ -133,9 +133,9 @@ impl<'a> Select<'a> {
     // 解析单一列, 包括前缀table和后缀alias
     fn parse_single_column(
         lexer: &mut Peekable<Lexer<'a>>,
-    ) -> Option<Result<Column<'a>, ParserError<'a>>> {
+    ) -> Option<Result<ColumnType<'a>, ParserError<'a>>> {
         let mut column_status = PrefixAliasStatus::None;
-        let mut column_result = Option::<Column<'_>>::None;
+        let mut column_result = Option::<ColumnType<'_>>::None;
 
         loop {
             match lexer.peek() {
@@ -144,7 +144,7 @@ impl<'a> Select<'a> {
                 {
                     column_status = PrefixAliasStatus::None;
 
-                    if let Some(column) = column_result.as_mut() {
+                    if let Some(ColumnType::Column(column)) = column_result.as_mut() {
                         let prefix = replace(&mut column.name, Token::Ident(name));
                         column.prefix = Some(prefix);
                     }
@@ -153,32 +153,51 @@ impl<'a> Select<'a> {
                 Some(Ok(Token::Ident(name)))
                     if matches!(column_status, PrefixAliasStatus::None) =>
                 {
-                    column_result = Some(Column {
-                        prefix: None,
-                        name: Token::Ident(name),
-                        alias: None,
-                    });
+                    let name = lexer.next().expect("unreach").unwrap();
 
-                    lexer.next();
-                    if let Some(Ok(Token::Period)) = lexer.peek() {
-                        column_status = PrefixAliasStatus::Prefix;
-                        lexer.next();
-                    } else {
-                        column_status = PrefixAliasStatus::None;
+                    match lexer.peek() {
+                        Some(Ok(Token::Period)) => {
+                            column_status = PrefixAliasStatus::Prefix;
+                            lexer.next();
+
+                            column_result = Some(ColumnType::Column(Column {
+                                prefix: None,
+                                name,
+                                alias: None,
+                            }));
+                        }
+                        Some(Ok(Token::LParen)) => {
+                            column_status = PrefixAliasStatus::None;
+                            match Self::parse_function(lexer, name) {
+                                Ok(func) => {
+                                    column_result = Some(ColumnType::Function(Box::new(func)));
+                                }
+                                Err(e) => return Some(Err(e)),
+                            }
+                        }
+                        Some(_) => {
+                            column_status = PrefixAliasStatus::None;
+                            column_result = Some(ColumnType::Column(Column {
+                                prefix: None,
+                                name,
+                                alias: None,
+                            }));
+                        }
+                        None => return None,
                     }
                 }
                 Some(Ok(Token::Mul)) => {
                     column_status = PrefixAliasStatus::None;
 
-                    if let Some(column) = column_result.as_mut() {
+                    if let Some(ColumnType::Column(column)) = column_result.as_mut() {
                         let prefix = replace(&mut column.name, Token::Mul);
                         column.prefix = Some(prefix);
                     } else {
-                        column_result = Some(Column {
+                        column_result = Some(ColumnType::Column(Column {
                             prefix: None,
                             name: Token::Mul,
                             alias: None,
-                        });
+                        }));
                     }
 
                     lexer.next();
@@ -187,8 +206,10 @@ impl<'a> Select<'a> {
                     if matches!(column_status, PrefixAliasStatus::Alias) =>
                 {
                     column_status = PrefixAliasStatus::None;
-                    if let Some(column) = column_result.as_mut() {
-                        column.alias = Some(Token::Ident(alias));
+                    match column_result.as_mut() {
+                        Some(ColumnType::Column(column)) => column.alias = Some(Token::Ident(alias)),
+                        Some(ColumnType::Function(func)) => func.alias = Some(Token::Ident(alias)),
+                        None => {},
                     }
                     column_status = PrefixAliasStatus::None;
                     lexer.next();
@@ -716,7 +737,10 @@ impl<'a> Select<'a> {
                         | Some(Ok(Token::Greater))
                         | Some(Ok(Token::GreaterOrEqual))
                         | Some(Ok(Token::Keyword(Keyword::Is)))
-                        | Some(Ok(Token::Keyword(Keyword::Not))) => {
+                        | Some(Ok(Token::Keyword(Keyword::Not)))
+                        | Some(Ok(Token::Negative))
+                        | Some(Ok(Token::NotEqual))
+                        | Some(Ok(Token::LessOrGreater)) => {
                             expr = Self::parse_binary_operation(lexer, expr)?;
                         }
                         Some(_) | None => break expr,
@@ -850,6 +874,9 @@ impl<'a> Select<'a> {
             Some(Ok(Token::GreaterOrEqual)) => BinaryOperation::GreaterOrEqual,
             Some(Ok(Token::Keyword(Keyword::Not))) => BinaryOperation::Not,
             Some(Ok(Token::Keyword(Keyword::Is))) => BinaryOperation::Is,
+            Some(Ok(Token::Negative)) => BinaryOperation::Negative,
+            Some(Ok(Token::NotEqual)) => BinaryOperation::NotEqual,
+            Some(Ok(Token::LessOrGreater)) => BinaryOperation::LessOrGreater,
             Some(_) | None => return Err(ParserError::Invalid),
         };
 
@@ -954,5 +981,43 @@ impl<'a> Select<'a> {
         let right_expr = Self::parse_expr_value(lexer)?;
 
         Ok((left_expr, right_expr))
+    }
+
+    // 解析函数
+    fn parse_function(lexer: &mut Peekable<Lexer<'a>>, function_name: Token<'a>) -> Result<Function<'a>, ParserError<'a>> {
+        let mut params = Vec::new();
+
+        Self::expect_token(lexer, Token::LParen)?;
+
+        loop {
+            match lexer.peek() {
+                Some(Ok(Token::RParen)) | None => break,
+                Some(Ok(Token::Ident(_))) => {
+                    match Self::parse_single_column(lexer) {
+                        Some(Ok(column)) => params.push(column),
+                        Some(Err(e)) => return Err(e),
+                        None => {}
+                    }
+                }
+                Some(Ok(Token::Comma)) => {
+                    lexer.next();
+                }
+                Some(_) => {
+                    match lexer.next() {
+                        Some(Ok(token)) => return Err(ParserError::Syntax { expected: SyntaxType::Column, found: SyntaxType::Token(token) } ),
+                        Some(Err(e)) => return Err(e),
+                        None => break,
+                    }
+                }
+            }
+        }
+
+        Self::expect_token(lexer, Token::RParen)?;
+
+        Ok(Function {
+            name: function_name,
+            params,
+            alias: None,
+        })
     }
 }
