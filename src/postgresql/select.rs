@@ -743,6 +743,9 @@ impl<'a> Select<'a> {
                         | Some(Ok(Token::LessOrGreater)) => {
                             expr = Self::parse_binary_operation(lexer, expr)?;
                         }
+                        Some(Ok(Token::Caret)) => {
+                            expr = Self::parse_exponent(lexer, expr)?;
+                        }
                         Some(_) | None => break expr,
                     }
                 }
@@ -817,6 +820,12 @@ impl<'a> Select<'a> {
                             )?),
                         })
                     }
+                    // 指数
+                    Some(Ok(Token::Caret)) => Ok(Expr::FourFundamental {
+                        operation_type: fundament_operation,
+                        left_expr,
+                        right_expr: Box::new(Self::parse_exponent(lexer, right_expr)?),
+                    }),
                     _ => Ok(Expr::FourFundamental {
                         operation_type: fundament_operation,
                         left_expr,
@@ -853,11 +862,47 @@ impl<'a> Select<'a> {
                 left_expr,
                 right_expr: Box::new(Self::parse_expr(lexer)?),
             }),
-            _ => Ok(Expr::FourFundamental {
-                operation_type: fundament_operation,
+            _ => {
+                let right_expr = Self::parse_expr_value(lexer)?;
+
+                match lexer.peek() {
+                    // 指数
+                    Some(Ok(Token::Caret)) => Ok(Expr::FourFundamental {
+                        operation_type: fundament_operation,
+                        left_expr,
+                        right_expr: Box::new(Self::parse_exponent(lexer, right_expr)?),
+                    }),
+                    _ => Ok(Expr::FourFundamental {
+                        operation_type: fundament_operation,
+                        left_expr,
+                        right_expr: Box::new(right_expr),
+                    })
+                }
+            },
+        }
+    }
+
+    // 解析指数
+    fn parse_exponent(lexer: &mut Peekable<Lexer<'a>>, left_expr: Expr<'a>) -> Result<Expr<'a>, ParserError<'a>> {
+        Self::expect_token(lexer, Token::Caret)?;
+
+        let left_expr = Box::new(left_expr);
+
+        match lexer.peek() {
+            Some(Ok(Token::LParen)) => Ok(Expr::FourFundamental {
+                operation_type: FourFundamentalOperation::Exponent,
                 left_expr,
-                right_expr: Box::new(Self::parse_expr_value(lexer)?),
+                right_expr: Box::new(Self::parse_expr(lexer)?),
             }),
+            _ => {
+                let right_expr = Box::new(Self::parse_expr_value(lexer)?);
+
+                Ok(Expr::FourFundamental {
+                    operation_type: FourFundamentalOperation::Exponent,
+                    left_expr,
+                    right_expr,
+                })
+            }
         }
     }
 

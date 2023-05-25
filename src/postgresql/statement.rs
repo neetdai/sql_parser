@@ -318,6 +318,90 @@ fn test_select_where() {
         }))
     );
 
+    let mut lexer = Lexer::new("select * from a where 1 + 2 ^ 1");
+    let statement = Statement::new(lexer);
+    assert_eq!(
+        statement,
+        Ok(Statement::Select(Select {
+            columns: vec![ColumnType::Column(Column {
+                prefix: None,
+                name: Token::Mul,
+                alias: None,
+            })],
+            tables: vec![TableType::Table(Table {
+                prefix: None,
+                name: Token::Ident("a"),
+                alias: None,
+            })],
+            r#where: Some(Expr::FourFundamental {
+                operation_type: FourFundamentalOperation::Plus,
+                left_expr: Box::new(Expr::Integer("1")),
+                right_expr: Box::new(Expr::FourFundamental {
+                    operation_type: FourFundamentalOperation::Exponent,
+                    left_expr: Box::new(Expr::Integer("2")),
+                    right_expr: Box::new(Expr::Integer("1")),
+                }),
+            }),
+            limit: None,
+        }))
+    );
+
+    let mut lexer = Lexer::new("select * from a where 1 * 2 ^ 1");
+    let statement = Statement::new(lexer);
+    assert_eq!(
+        statement,
+        Ok(Statement::Select(Select {
+            columns: vec![ColumnType::Column(Column {
+                prefix: None,
+                name: Token::Mul,
+                alias: None,
+            })],
+            tables: vec![TableType::Table(Table {
+                prefix: None,
+                name: Token::Ident("a"),
+                alias: None,
+            })],
+            r#where: Some(Expr::FourFundamental {
+                operation_type: FourFundamentalOperation::Multiply,
+                left_expr: Box::new(Expr::Integer("1")),
+                right_expr: Box::new(Expr::FourFundamental {
+                    operation_type: FourFundamentalOperation::Exponent,
+                    left_expr: Box::new(Expr::Integer("2")),
+                    right_expr: Box::new(Expr::Integer("1")),
+                }),
+            }),
+            limit: None,
+        }))
+    );
+
+    let mut lexer = Lexer::new("select * from a where 2 ^ ( 1 + 1 )");
+    let statement = Statement::new(lexer);
+    assert_eq!(
+        statement,
+        Ok(Statement::Select(Select {
+            columns: vec![ColumnType::Column(Column {
+                prefix: None,
+                name: Token::Mul,
+                alias: None,
+            })],
+            tables: vec![TableType::Table(Table {
+                prefix: None,
+                name: Token::Ident("a"),
+                alias: None,
+            })],
+            r#where: Some(Expr::FourFundamental {
+                operation_type: FourFundamentalOperation::Exponent,
+                left_expr: Box::new(Expr::Integer("2")),
+                right_expr: Box::new(Expr::FourFundamental {
+                    operation_type: FourFundamentalOperation::Plus,
+                    left_expr: Box::new(Expr::Integer("1")),
+                    right_expr: Box::new(Expr::Integer("1")),
+                }),
+            }),
+            limit: None,
+        }))
+    );
+
     let mut lexer = Lexer::new("select * from a where 1 * ( 2 + 1 )");
     let statement = Statement::new(lexer);
     assert_eq!(
@@ -512,6 +596,38 @@ fn test_select_function() {
                         name: Token::Ident("b"),
                         alias: None,
                     })
+                ],
+                alias: Some(Token::Ident("a_q")),
+            }))],
+            tables: vec![TableType::Table(Table {
+                prefix: None,
+                name: Token::Ident("a"),
+                alias: None,
+            })],
+            r#where: None,
+            limit: None,
+        }))
+    );
+
+    let mut lexer = Lexer::new("select count(func(a.b)) as a_q from a");
+    let statement = Statement::new(lexer);
+    assert_eq!(
+        statement,
+        Ok(Statement::Select(Select {
+            columns: vec![ColumnType::Function(Box::new(Function {
+                name: Token::Ident("count"),
+                params: vec![
+                    ColumnType::Function(Box::new(Function {
+                        name: Token::Ident("func"),
+                        params: vec![
+                            ColumnType::Column(Column {
+                                prefix: Some(Token::Ident("a")),
+                                name: Token::Ident("b"),
+                                alias: None,
+                            })
+                        ],
+                        alias: None
+                    }))
                 ],
                 alias: Some(Token::Ident("a_q")),
             }))],

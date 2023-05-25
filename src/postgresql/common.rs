@@ -128,6 +128,7 @@ pub enum FourFundamentalOperation {
     Multiply,
     Divide,
     Modulo,
+    Exponent,
 }
 
 #[derive(Debug, PartialEq)]
