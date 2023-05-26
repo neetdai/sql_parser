@@ -43,6 +43,7 @@ fn select_statement() {
             })],
             r#where: None,
             limit: None,
+            group_by: None,
         }))
     );
 
@@ -77,6 +78,7 @@ fn select_statement() {
             ],
             r#where: None,
             limit: None,
+            group_by: None,
         }))
     );
 
@@ -97,6 +99,7 @@ fn select_statement() {
             })],
             r#where: None,
             limit: None,
+            group_by: None,
         }))
     );
 
@@ -117,6 +120,7 @@ fn select_statement() {
             })],
             r#where: None,
             limit: None,
+            group_by: None,
         }))
     );
 }
@@ -146,6 +150,7 @@ fn test_select_limit() {
                 from: None,
                 limit: Token::Integer("10"),
             }),
+            group_by: None,
         }))
     );
 
@@ -169,6 +174,7 @@ fn test_select_limit() {
                 from: Some(Token::Integer("10")),
                 limit: Token::Integer("50"),
             }),
+            group_by: None,
         }))
     );
 }
@@ -251,6 +257,7 @@ fn test_select_inner_join() {
                 }],
                 r#where: None,
                 limit: None,
+                group_by: None,
             }))
         );
     }
@@ -287,6 +294,7 @@ fn test_select_where() {
                 }),
             }),
             limit: None,
+            group_by: None,
         }))
     );
 
@@ -315,6 +323,7 @@ fn test_select_where() {
                 right_expr: Box::new(Expr::Integer("1")),
             }),
             limit: None,
+            group_by: None,
         }))
     );
 
@@ -343,6 +352,7 @@ fn test_select_where() {
                 }),
             }),
             limit: None,
+            group_by: None,
         }))
     );
 
@@ -371,6 +381,7 @@ fn test_select_where() {
                 }),
             }),
             limit: None,
+            group_by: None,
         }))
     );
 
@@ -399,6 +410,7 @@ fn test_select_where() {
                 }),
             }),
             limit: None,
+            group_by: None,
         }))
     );
 
@@ -427,6 +439,7 @@ fn test_select_where() {
                 }),
             }),
             limit: None,
+            group_by: None,
         }))
     );
 
@@ -453,6 +466,7 @@ fn test_select_where() {
                 expr_collection: vec![Expr::Integer("1"), Expr::Integer("2"), Expr::Integer("3")]
             }),
             limit: None,
+            group_by: None,
         }))
     );
 
@@ -501,6 +515,7 @@ fn test_select_where() {
                 }),
             }),
             limit: None,
+            group_by: None,
         }))
     );
 
@@ -520,16 +535,18 @@ fn test_select_where() {
                 alias: None,
             })],
             r#where: Some(Expr::Between {
-                target: Box::new(Expr::Field(Field { prefix: None,  name: Token::Ident("a") })),
+                target: Box::new(Expr::Field(Field {
+                    prefix: None,
+                    name: Token::Ident("a")
+                })),
                 start: Box::new(Expr::Integer("1")),
                 end: Box::new(Expr::Integer("10")),
             }),
             limit: None,
+            group_by: None,
         }))
     );
-
 }
-
 
 #[test]
 fn test_select_binary_operator() {
@@ -559,18 +576,28 @@ fn test_select_binary_operator() {
                     right_expr: Box::new(Expr::Integer("1")),
                 }),
                 limit: None,
+                group_by: None,
             }))
         );
     };
-    
+
     let list = vec![
         ("select * from a where 2 == 1", BinaryOperation::DoubleEqual),
         ("select * from a where 2 < 1", BinaryOperation::Less),
         ("select * from a where 2 > 1", BinaryOperation::Greater),
-        ("select * from a where 2 >= 1", BinaryOperation::GreaterOrEqual),
+        (
+            "select * from a where 2 >= 1",
+            BinaryOperation::GreaterOrEqual,
+        ),
         ("select * from a where 2 <= 1", BinaryOperation::LessOrEqual),
-        ("select * from a where 2 <> 1", BinaryOperation::LessOrGreater),
-        ("select * from a where 2 >= 1", BinaryOperation::GreaterOrEqual),
+        (
+            "select * from a where 2 <> 1",
+            BinaryOperation::LessOrGreater,
+        ),
+        (
+            "select * from a where 2 >= 1",
+            BinaryOperation::GreaterOrEqual,
+        ),
         ("select * from a where 2 != 1", BinaryOperation::NotEqual),
         ("select * from a where 2 is 1", BinaryOperation::Is),
         ("select * from a where 2 not 1", BinaryOperation::Not),
@@ -590,13 +617,11 @@ fn test_select_function() {
         Ok(Statement::Select(Select {
             columns: vec![ColumnType::Function(Box::new(Function {
                 name: Token::Ident("count"),
-                params: vec![
-                    ColumnType::Column(Column {
-                        prefix: Some(Token::Ident("a")),
-                        name: Token::Ident("b"),
-                        alias: None,
-                    })
-                ],
+                params: vec![ColumnType::Column(Column {
+                    prefix: Some(Token::Ident("a")),
+                    name: Token::Ident("b"),
+                    alias: None,
+                })],
                 alias: Some(Token::Ident("a_q")),
             }))],
             tables: vec![TableType::Table(Table {
@@ -606,6 +631,7 @@ fn test_select_function() {
             })],
             r#where: None,
             limit: None,
+            group_by: None,
         }))
     );
 
@@ -616,19 +642,15 @@ fn test_select_function() {
         Ok(Statement::Select(Select {
             columns: vec![ColumnType::Function(Box::new(Function {
                 name: Token::Ident("count"),
-                params: vec![
-                    ColumnType::Function(Box::new(Function {
-                        name: Token::Ident("func"),
-                        params: vec![
-                            ColumnType::Column(Column {
-                                prefix: Some(Token::Ident("a")),
-                                name: Token::Ident("b"),
-                                alias: None,
-                            })
-                        ],
-                        alias: None
-                    }))
-                ],
+                params: vec![ColumnType::Function(Box::new(Function {
+                    name: Token::Ident("func"),
+                    params: vec![ColumnType::Column(Column {
+                        prefix: Some(Token::Ident("a")),
+                        name: Token::Ident("b"),
+                        alias: None,
+                    })],
+                    alias: None
+                }))],
                 alias: Some(Token::Ident("a_q")),
             }))],
             tables: vec![TableType::Table(Table {
@@ -638,6 +660,48 @@ fn test_select_function() {
             })],
             r#where: None,
             limit: None,
+            group_by: None,
+        }))
+    );
+}
+
+#[test]
+fn test_select_group_by() {
+    use crate::postgresql::common::*;
+    use alloc::boxed::Box;
+    use alloc::vec;
+
+    let mut lexer = Lexer::new("select * from a group by a,b");
+    let statement = Statement::new(lexer);
+    assert_eq!(
+        statement,
+        Ok(Statement::Select(Select {
+            columns: vec![ColumnType::Column(Column {
+                prefix: None,
+                name: Token::Mul,
+                alias: None,
+            })],
+            tables: vec![TableType::Table(Table {
+                prefix: None,
+                name: Token::Ident("a"),
+                alias: None,
+            })],
+            r#where: None,
+            limit: None,
+            group_by: Some(GroupBy {
+                columns: vec![
+                    ColumnType::Column(Column {
+                        prefix: None,
+                        name: Token::Ident("a"),
+                        alias: None,
+                    }),
+                    ColumnType::Column(Column {
+                        prefix: None,
+                        name: Token::Ident("b"),
+                        alias: None,
+                    }),
+                ]
+            }),
         }))
     );
 }

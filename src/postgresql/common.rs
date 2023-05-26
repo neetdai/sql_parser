@@ -111,7 +111,7 @@ pub enum Expr<'a> {
         operator: BinaryOperation,
         left_expr: Box<Expr<'a>>,
         right_expr: Box<Expr<'a>>,
-    }
+    },
 }
 
 #[derive(Debug, PartialEq)]
@@ -150,4 +150,9 @@ pub struct Function<'a> {
     pub name: Token<'a>,
     pub params: Vec<ColumnType<'a>>,
     pub alias: Option<Token<'a>>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct GroupBy<'a> {
+    pub columns: Vec<ColumnType<'a>>,
 }

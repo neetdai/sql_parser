@@ -212,10 +212,10 @@ impl<'a> Lexer<'a> {
                 self.scanner.next();
                 self.next_if(|(_, c)| *c == '=')
                     .map(|_| Ok(Token::LessOrEqual))
-                    .or(self.next_if(|(_, c)| *c == '>')
-                            .map(|_| Ok(Token::LessOrGreater))
-                            .or(Some(Ok(Token::Less)))
-                    )
+                    .or(self
+                        .next_if(|(_, c)| *c == '>')
+                        .map(|_| Ok(Token::LessOrGreater))
+                        .or(Some(Ok(Token::Less))))
             }
             Some((_, '+')) => {
                 self.scanner.next();
@@ -752,6 +752,7 @@ fn scan_keyword() {
         ("Between", Keyword::Between),
         ("Binary", Keyword::Binary),
         ("Both", Keyword::Both),
+        ("By", Keyword::By),
         ("Case", Keyword::Case),
         ("Cast", Keyword::Cast),
         ("Check", Keyword::Check),

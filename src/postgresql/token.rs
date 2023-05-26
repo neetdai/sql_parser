@@ -55,7 +55,7 @@ pub enum Token<'a> {
     // 波浪线
     Tilde,
 
-    // 
+    //
     At,
 
     // 井号

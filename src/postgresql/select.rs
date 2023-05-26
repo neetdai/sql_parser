@@ -1,7 +1,7 @@
 use crate::error::{Error as ParserError, ErrorType, SyntaxType};
 use crate::postgresql::common::{
-    Column, Expr, Field, FourFundamentalOperation, Join, JoinType, Limit, LinkOperator, Table,
-    TableType, BinaryOperation, ColumnType, Function,
+    BinaryOperation, Column, ColumnType, Expr, Field, FourFundamentalOperation, Function, GroupBy,
+    Join, JoinType, Limit, LinkOperator, Table, TableType,
 };
 use crate::postgresql::{Keyword, Lexer, Token};
 use alloc::boxed::Box;
@@ -22,6 +22,7 @@ pub struct Select<'a> {
     pub tables: Vec<TableType<'a>>,
     pub r#where: Option<Expr<'a>>,
     pub limit: Option<Limit<'a>>,
+    pub group_by: Option<GroupBy<'a>>,
 }
 
 impl<'a> Select<'a> {
@@ -44,10 +45,17 @@ impl<'a> Select<'a> {
             tables,
             r#where: None,
             limit: None,
+            group_by: None,
         };
 
         match Self::parse_where(lexer) {
             Some(Ok(r#where)) => select.r#where = Some(r#where),
+            Some(Err(e)) => return Err(e),
+            None => {}
+        }
+
+        match Self::parse_group_by(lexer) {
+            Some(Ok(group_by)) => select.group_by = Some(group_by),
             Some(Err(e)) => return Err(e),
             None => {}
         }
@@ -98,7 +106,9 @@ impl<'a> Select<'a> {
         }
     }
 
-    fn parse_columns(lexer: &mut Peekable<Lexer<'a>>) -> Result<Vec<ColumnType<'a>>, ParserError<'a>> {
+    fn parse_columns(
+        lexer: &mut Peekable<Lexer<'a>>,
+    ) -> Result<Vec<ColumnType<'a>>, ParserError<'a>> {
         let mut columns = Vec::<ColumnType<'a>>::new();
         loop {
             match lexer.peek() {
@@ -175,7 +185,7 @@ impl<'a> Select<'a> {
                                 Err(e) => return Some(Err(e)),
                             }
                         }
-                        Some(_) => {
+                        _ => {
                             column_status = PrefixAliasStatus::None;
                             column_result = Some(ColumnType::Column(Column {
                                 prefix: None,
@@ -183,7 +193,6 @@ impl<'a> Select<'a> {
                                 alias: None,
                             }));
                         }
-                        None => return None,
                     }
                 }
                 Some(Ok(Token::Mul)) => {
@@ -207,9 +216,11 @@ impl<'a> Select<'a> {
                 {
                     column_status = PrefixAliasStatus::None;
                     match column_result.as_mut() {
-                        Some(ColumnType::Column(column)) => column.alias = Some(Token::Ident(alias)),
+                        Some(ColumnType::Column(column)) => {
+                            column.alias = Some(Token::Ident(alias))
+                        }
                         Some(ColumnType::Function(func)) => func.alias = Some(Token::Ident(alias)),
-                        None => {},
+                        None => {}
                     }
                     column_status = PrefixAliasStatus::None;
                     lexer.next();
@@ -876,14 +887,17 @@ impl<'a> Select<'a> {
                         operation_type: fundament_operation,
                         left_expr,
                         right_expr: Box::new(right_expr),
-                    })
+                    }),
                 }
-            },
+            }
         }
     }
 
     // 解析指数
-    fn parse_exponent(lexer: &mut Peekable<Lexer<'a>>, left_expr: Expr<'a>) -> Result<Expr<'a>, ParserError<'a>> {
+    fn parse_exponent(
+        lexer: &mut Peekable<Lexer<'a>>,
+        left_expr: Expr<'a>,
+    ) -> Result<Expr<'a>, ParserError<'a>> {
         Self::expect_token(lexer, Token::Caret)?;
 
         let left_expr = Box::new(left_expr);
@@ -1029,7 +1043,10 @@ impl<'a> Select<'a> {
     }
 
     // 解析函数
-    fn parse_function(lexer: &mut Peekable<Lexer<'a>>, function_name: Token<'a>) -> Result<Function<'a>, ParserError<'a>> {
+    fn parse_function(
+        lexer: &mut Peekable<Lexer<'a>>,
+        function_name: Token<'a>,
+    ) -> Result<Function<'a>, ParserError<'a>> {
         let mut params = Vec::new();
 
         Self::expect_token(lexer, Token::LParen)?;
@@ -1037,23 +1054,24 @@ impl<'a> Select<'a> {
         loop {
             match lexer.peek() {
                 Some(Ok(Token::RParen)) | None => break,
-                Some(Ok(Token::Ident(_))) => {
-                    match Self::parse_single_column(lexer) {
-                        Some(Ok(column)) => params.push(column),
-                        Some(Err(e)) => return Err(e),
-                        None => {}
-                    }
-                }
+                Some(Ok(Token::Ident(_))) => match Self::parse_single_column(lexer) {
+                    Some(Ok(column)) => params.push(column),
+                    Some(Err(e)) => return Err(e),
+                    None => {}
+                },
                 Some(Ok(Token::Comma)) => {
                     lexer.next();
                 }
-                Some(_) => {
-                    match lexer.next() {
-                        Some(Ok(token)) => return Err(ParserError::Syntax { expected: SyntaxType::Column, found: SyntaxType::Token(token) } ),
-                        Some(Err(e)) => return Err(e),
-                        None => break,
+                Some(_) => match lexer.next() {
+                    Some(Ok(token)) => {
+                        return Err(ParserError::Syntax {
+                            expected: SyntaxType::Column,
+                            found: SyntaxType::Token(token),
+                        })
                     }
-                }
+                    Some(Err(e)) => return Err(e),
+                    None => break,
+                },
             }
         }
 
@@ -1064,5 +1082,38 @@ impl<'a> Select<'a> {
             params,
             alias: None,
         })
+    }
+
+    // 解析group by语句
+    fn parse_group_by(
+        lexer: &mut Peekable<Lexer<'a>>,
+    ) -> Option<Result<GroupBy<'a>, ParserError<'a>>> {
+        lexer.next_if_eq(&Ok(Token::Keyword(Keyword::Group)))?;
+        if lexer.next_if_eq(&Ok(Token::Keyword(Keyword::By))).is_none() {
+            return Some(Err(ParserError::Syntax {
+                expected: SyntaxType::Keyword(Keyword::By),
+                found: SyntaxType::Eof,
+            }));
+        }
+
+        let mut columns = Vec::new();
+
+        loop {
+            match lexer.peek() {
+                Some(Ok(Token::Ident(_))) => match Self::parse_single_column(lexer) {
+                    Some(Ok(column)) => {
+                        columns.push(column);
+                    }
+                    Some(Err(e)) => return Some(Err(e)),
+                    None => break,
+                },
+                Some(Ok(Token::Comma)) => {
+                    lexer.next();
+                }
+                Some(_) | None => break,
+            }
+        }
+
+        Some(Ok(GroupBy { columns }))
     }
 }
