@@ -6,4 +6,12 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
+default = ["postgresql"]
 postgresql = []
+
+[dev-dependencies]
+criterion = {verion = "0.4", features = ["html_reports"]}
+
+[[bench]]
+name = "parser"
+harness = false
