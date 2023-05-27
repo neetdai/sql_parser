@@ -10,10 +10,29 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
-
+  codestyle:
     runs-on: ubuntu-latest
+    steps:
+    - name: Set up Rust
+      uses: actions/checkout@v3
+      with:
+        components: rustfmt
+        rust-version: stable
+    - uses: actions/checkout@v2
+    - run: cargo fmt --all
 
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Rust
+        uses: actions/checkout@v3
+        with:
+          components: clippy
+      - uses: actions/checkout@v2
+      - run: cargo clippy --all-targets --all-features -- -D warnings
+
+  test:
+    runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
     - run: cargo test
