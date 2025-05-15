@@ -1,0 +1,4 @@
+
+trait DialectTrait {
+    type Keywords;
+}
