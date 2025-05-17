@@ -10,7 +10,7 @@ default = ["postgresql"]
 postgresql = []
 
 [dev-dependencies]
-criterion = {verion = "0.6.0", features = ["html_reports"]}
+criterion = {version = "0.6.0", features = ["html_reports"]}
 
 [[bench]]
 name = "parser"
