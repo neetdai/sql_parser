@@ -1,7 +1,7 @@
 [package]
 name = "sql_parser"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -10,7 +10,7 @@ default = ["postgresql"]
 postgresql = []
 
 [dev-dependencies]
-criterion = {verion = "0.4", features = ["html_reports"]}
+criterion = {verion = "0.6.0", features = ["html_reports"]}
 
 [[bench]]
 name = "parser"
